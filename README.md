@@ -24,6 +24,19 @@ While working on the sources:
 node build.mjs --watch
 ```
 
+## Where your work is stored
+
+The editor runs entirely in your browser. Nothing is uploaded anywhere, and this repository
+or GitHub never sees your maps.
+
+- Work in progress is remembered in the browser (IndexedDB). That is tied to **one browser
+  on one computer** and disappears if you clear site data.
+- **Back up your map yourself.** Use **Save project** (`.atlas.json`) or **Export site**
+  (`index.html`) regularly, and use **Open project** to carry on later or on another computer.
+
+Online version: https://jakubhajduk-ai.github.io/dnd-atlas-map-maker/ (the same editor, no
+download needed).
+
 ## How a map is made
 
 1. Drag a map image onto the editor surface (JPG, PNG, WEBP).
