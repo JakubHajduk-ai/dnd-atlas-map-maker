@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas — interactive map editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Eczar:wght@500;600;700&family=Vollkorn:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* __CSS__ */
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">Atlas<em>.</em></div>
+    <div class="spacer"></div>
+    <button class="tbtn" id="btnSettings">Map settings</button>
+    <button class="tbtn" id="btnLoad">Open project</button>
+    <button class="tbtn" id="btnSave">Save project</button>
+    <button class="tbtn" id="btnPreview">Preview</button>
+    <button class="tbtn primary" id="btnExport">Export site</button>
+  </header>
+
+  <div class="workspace">
+    <aside class="panel left">
+      <div class="panel-head"><h2>Points of interest</h2><span class="count" id="poiCount"></span></div>
+      <div class="panel-body">
+        <ul class="poi-list" id="poiList"></ul>
+        <div class="empty hidden" id="poiEmpty">
+          <strong>No points yet.</strong>
+          Click “Add point” and then a spot on the map.
+        </div>
+      </div>
+      <div style="padding:10px;border-top:1px solid var(--line)">
+        <button class="addbtn" id="btnAddPoi">Add point</button>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="viewport" id="viewport">
+        <div class="canvas" id="canvas"></div>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <div class="card">
+          <h3>Start with a map</h3>
+          <p>Drop a map image here, or pick one from your disk. JPG, PNG and WEBP all work.</p>
+          <button class="tbtn primary" id="btnPickMap">Choose map image</button>
+        </div>
+      </div>
+      <div class="sessbar hidden" id="sessBar">
+        <button id="sessPrev" title="Previous session">‹</button>
+        <span class="sess-name" id="sessName"></span>
+        <span class="sess-count" id="sessCount"></span>
+        <button id="sessNext" title="Next session">›</button>
+      </div>
+      <div class="stage-hint hidden" id="stageHint">Click the map to place the point. Esc cancels.</div>
+      <div class="zoombar hidden" id="zoombar">
+        <button id="zIn" title="Zoom in">+</button>
+        <button id="zOut" title="Zoom out">−</button>
+        <button id="zFit" title="Fit the whole map" style="font-size:12px">fit</button>
+      </div>
+    </main>
+
+    <aside class="panel right">
+      <div class="panel-head"><h2 id="inspTitle">Point detail</h2></div>
+      <div class="panel-body" id="inspector">
+        <div class="empty">
+          <strong>Nothing selected.</strong>
+          Pick a point in the list or on the map and edit its description and characters.
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<input type="file" id="filePicker" accept="image/*" class="hidden">
+<input type="file" id="jsonPicker" accept="application/json,.json" class="hidden">
+<div id="overlay"></div>
+
+<script>
+/* __JS__ */
+</script>
+</body>
+</html>

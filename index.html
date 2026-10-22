@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas — interactive map editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Eczar:wght@500;600;700&family=Vollkorn:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink-900:#0d1315; --ink-800:#121b1e; --ink-700:#19252a; --ink-600:#223137;
+  --line:rgba(180,135,74,.20); --line-strong:rgba(180,135,74,.45);
+  --brass:#b4874a; --brass-lit:#dcae6a; --verd:#4e8f7e; --rust:#a8503c;
+  --linen:#ded3ba; --linen-2:#c9b892; --linen-3:#b3a180;
+  --text:#e9e1d1; --muted:#95a3a3; --danger:#c05a48;
+  --display:"Eczar",Georgia,serif; --body:"Vollkorn",Georgia,"Times New Roman",serif;
+  --frame-line:rgba(198,157,96,.62); --frame-band:rgba(12,17,15,.26);
+  --r:3px;
+}
+:root:not([data-theme="light"]){ }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ } }
+:root[data-theme="dark"]{ }
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--ink-900); color:var(--text);
+  font-family:var(--body); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; overflow:hidden;
+}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--brass-lit); outline-offset:2px}
+@media (prefers-reduced-motion: reduce){ *,*::before,*::after{animation:none!important;transition:none!important} }
+
+/* ---------- chrome ---------- */
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+.topbar{
+  display:flex;align-items:center;gap:14px;padding:0 16px;height:54px;flex:0 0 auto;
+  background:linear-gradient(var(--ink-700),var(--ink-800));
+  border-bottom:1px solid var(--line);
+}
+.brand{font-family:var(--display);font-weight:600;font-size:19px;letter-spacing:.02em;color:var(--linen)}
+.brand em{font-style:normal;color:var(--brass)}
+.topbar .spacer{flex:1}
+.tbtn{
+  background:transparent;border:1px solid var(--line-strong);border-radius:var(--r);
+  padding:7px 13px;color:var(--linen-2);transition:background .15s,color .15s;
+}
+.tbtn:hover{background:rgba(180,135,74,.12);color:var(--linen)}
+.tbtn.primary{background:var(--brass);border-color:var(--brass);color:#1a1207;font-weight:600}
+.tbtn.primary:hover{background:var(--brass-lit)}
+.tbtn:disabled{opacity:.4;cursor:not-allowed}
+
+.workspace{flex:1;display:grid;grid-template-columns:270px 1fr 340px;min-height:0}
+.panel{background:var(--ink-800);min-height:0;display:flex;flex-direction:column}
+.panel.left{border-right:1px solid var(--line)}
+.panel.right{border-left:1px solid var(--line)}
+.panel-head{
+  flex:0 0 auto;padding:13px 14px 10px;border-bottom:1px solid var(--line);
+  display:flex;align-items:baseline;gap:8px;
+}
+.panel-head h2{margin:0;font-family:var(--display);font-size:15px;font-weight:600;color:var(--linen)}
+.panel-head .count{color:var(--muted);font-size:13px}
+.panel-body{flex:1;overflow-y:auto;padding:10px}
+
+/* ---------- POI list ---------- */
+.poi-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.poi-item{
+  display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:var(--r);
+  border:1px solid transparent;cursor:pointer;
+}
+.poi-item:hover{background:var(--ink-700)}
+.poi-item[aria-selected="true"]{background:var(--ink-600);border-color:var(--line-strong)}
+.poi-item .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
+.poi-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.poi-item .meta{color:var(--muted);font-size:12px;flex:0 0 auto}
+.empty{color:var(--muted);padding:18px 10px;line-height:1.6;font-size:14px}
+.empty strong{color:var(--linen-2);font-weight:600;display:block;margin-bottom:4px}
+
+/* ---------- map stage ---------- */
+.stage{position:relative;background:
+  radial-gradient(ellipse at 50% 40%, #16211f 0%, #0b1012 70%);
+  overflow:hidden;min-height:0}
+.viewport{position:absolute;inset:0;cursor:grab;touch-action:none}
+.viewport.panning{cursor:grabbing}
+.viewport.adding{cursor:crosshair}
+.canvas{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+.canvas img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;
+  box-shadow:0 18px 60px rgba(0,0,0,.6)}
+
+/* The coordinates mean the centre of the knob, so the pin is anchored and scaled around it.
+   Anchor it anywhere else and the knob keeps a fixed screen-pixel offset from the spot,
+   which is a different distance on the map at every zoom level — the marker would crawl. */
+.pin{
+  position:absolute;--knob:16px;
+  transform:translate(-50%,calc(var(--knob) / -2)) scale(var(--inv,1));
+  transform-origin:50% calc(var(--knob) / 2);
+  display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  user-select:none;-webkit-user-select:none;
+}
+.pin .knob{
+  width:var(--knob);height:var(--knob);border-radius:50%;
+  background:var(--pc,#4e8f7e);border:1.2px solid rgba(0,0,0,.45);
+  display:grid;place-items:center;box-shadow:0 2px 5px rgba(0,0,0,.5);
+}
+.pin .knob svg{width:9.5px;height:9.5px;color:#0d1315}
+/* a city outranks a hamlet or a lone traveller, so it is given a larger mark */
+.pin[data-type="city"]{--knob:21px}
+.pin[data-type="city"] .knob svg{width:12.5px;height:12.5px}
+/* same treatment as the finished map: white letters, dark outline, no plate under them */
+.pin .lbl{
+  font-family:var(--display);font-size:12.5px;font-weight:600;color:#fff;
+  white-space:nowrap;-webkit-text-stroke:2.5px rgba(0,0,0,.92);paint-order:stroke fill;
+  text-shadow:0 1px 2px rgba(0,0,0,.5);
+}
+.pin[data-sel="1"] .knob{box-shadow:0 0 0 2.5px var(--brass-lit),0 2px 6px rgba(0,0,0,.55)}
+.pin[data-hidden="1"]{opacity:.42}
+
+/* a region is lettered, not pinned — only its name, centred on the anchor, as on the finished map */
+.pin.big{transform:translate(-50%,-50%) scale(var(--inv,1));transform-origin:50% 50%}
+.pin.big .lbl{
+  font-size:14.5px;letter-spacing:.14em;text-transform:uppercase;
+  -webkit-text-stroke-width:3px;text-shadow:0 0 14px var(--pc),0 1px 2px rgba(0,0,0,.5);
+}
+.pin.big[data-sel="1"] .lbl{color:var(--brass-lit)}
+
+/* the engraved border, same as on the finished map */
+.frame{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.frame .band{fill:var(--frame-band)}
+.frame .rule{fill:none;stroke:var(--frame-line)}
+.frame .orn{fill:var(--frame-line)}
+
+/* region areas — drawn under the points, invisible in the export */
+.areas{position:absolute;top:0;left:0;overflow:visible;pointer-events:none}
+.areas polygon,.areas polyline{
+  fill:var(--ac);fill-opacity:.09;stroke:var(--ac);stroke-width:1.6;
+  vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round;
+  pointer-events:auto;cursor:pointer;
+}
+.areas polygon:hover{fill-opacity:.17}
+.areas polygon[data-sel="1"]{fill-opacity:.2;stroke-width:2.4}
+.areas .draft{fill-opacity:.07;stroke-dasharray:6 5;pointer-events:none}
+.areas .vtx{fill:var(--ac);stroke:rgba(0,0,0,.55);stroke-width:1.4;vector-effect:non-scaling-stroke;pointer-events:none}
+
+.reg-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.reg-row input[type=color]{width:34px;height:30px;padding:2px;background:var(--ink-900);border:1px solid var(--line);border-radius:var(--r)}
+.reg-row .tag{font-size:12px;color:var(--muted);white-space:nowrap}
+
+/* which moment of the campaign is on the table: dragging a point writes into this session */
+.sessbar{
+  position:absolute;left:50%;top:12px;transform:translateX(-50%);
+  display:flex;align-items:center;gap:4px;
+  background:rgba(10,15,17,.92);border:1px solid var(--line-strong);border-radius:var(--r);
+  padding:3px 4px;max-width:min(420px,calc(100% - 28px));
+}
+.sessbar button{
+  width:26px;height:26px;background:none;border:none;border-radius:2px;
+  color:var(--linen-2);font-size:16px;line-height:1;
+}
+.sessbar button:hover:not(:disabled){background:rgba(180,135,74,.16);color:var(--linen)}
+.sessbar button:disabled{opacity:.25;cursor:default}
+.sessbar .sess-name{
+  font-family:var(--display);font-size:13.5px;font-weight:600;color:var(--linen);
+  padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.sessbar .sess-count{color:var(--muted);font-size:12px;flex:0 0 auto}
+/* a point that was moved in this very session, as opposed to standing where it already stood */
+.pin[data-moved="1"] .knob{box-shadow:0 0 0 2px var(--brass),0 2px 5px rgba(0,0,0,.5)}
+
+.stage-hint{
+  position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+  background:rgba(10,15,17,.9);border:1px solid var(--line-strong);border-radius:var(--r);
+  padding:7px 14px;font-size:13.5px;color:var(--linen-2);pointer-events:none;
+}
+.zoombar{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:5px}
+.zoombar button{
+  width:34px;height:34px;background:rgba(10,15,17,.9);border:1px solid var(--line-strong);
+  border-radius:var(--r);color:var(--linen-2);font-size:17px;line-height:1;
+}
+.zoombar button:hover{background:var(--ink-600);color:var(--linen)}
+
+.dropzone{
+  position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:30px;
+}
+.dropzone .card{max-width:420px}
+.dropzone h3{font-family:var(--display);font-size:24px;margin:0 0 10px;color:var(--linen)}
+.dropzone p{color:var(--muted);margin:0 0 20px}
+.dropzone.hot{background:rgba(78,143,126,.10);outline:2px dashed var(--verd);outline-offset:-14px}
+
+/* ---------- inspector ---------- */
+.field{margin-bottom:13px}
+.field > label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.panel .sub{color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 7px}
+.inp,textarea.inp,select.inp{
+  width:100%;background:var(--ink-900);border:1px solid var(--line);border-radius:var(--r);
+  padding:7px 9px;color:var(--text);
+}
+.inp:focus{border-color:var(--line-strong);outline:none}
+textarea.inp{resize:vertical;min-height:84px;line-height:1.6}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-10px -10px 14px;padding:0 10px;flex:0 0 auto}
+.tabs button{
+  background:none;border:none;border-bottom:2px solid transparent;padding:10px 12px;
+  color:var(--muted);font-family:var(--display);font-size:14px;font-weight:600;
+}
+.tabs button[aria-selected="true"]{color:var(--brass-lit);border-bottom-color:var(--brass)}
+
+.thumb{
+  position:relative;width:100%;aspect-ratio:16/10;background:var(--ink-900);
+  border:1px dashed var(--line-strong);border-radius:var(--r);display:grid;place-items:center;
+  overflow:hidden;color:var(--muted);font-size:13.5px;text-align:center;cursor:pointer;
+}
+.thumb img{width:100%;height:100%;object-fit:cover}
+/* artwork with a shape of its own (a title) is shown whole, not cropped to the box */
+.thumb.contain img{object-fit:contain;padding:8px}
+.thumb .x{
+  position:absolute;top:5px;right:5px;width:24px;height:24px;border-radius:2px;
+  background:rgba(10,15,17,.85);border:1px solid var(--line-strong);color:var(--linen-2);
+  display:grid;place-items:center;font-size:14px;
+}
+
+/* several pictures of one place: the leading one full width, the rest in a row beneath */
+.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.gallery .thumb{aspect-ratio:1/1;font-size:12.5px;padding:4px;cursor:default}
+.gallery .thumb:first-child{grid-column:1 / -1;aspect-ratio:16/10}
+.gallery .thumb.add{cursor:pointer}
+.gallery .thumb.add:hover{border-color:var(--brass);color:var(--linen-2)}
+.thumb .x.left{right:auto;left:5px}
+
+.char{border:1px solid var(--line);border-radius:var(--r);padding:10px;margin-bottom:10px;background:var(--ink-700)}
+.char-top{display:flex;gap:10px;margin-bottom:9px}
+.char-top .thumb{width:76px;flex:0 0 76px;aspect-ratio:3/4}
+.char-top .fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.char-actions{display:flex;gap:5px;justify-content:flex-end;margin-top:7px}
+.mini{
+  background:transparent;border:1px solid var(--line);border-radius:2px;padding:3px 8px;
+  font-size:12.5px;color:var(--muted);
+}
+.mini:hover{color:var(--linen);border-color:var(--line-strong)}
+.mini.del:hover{color:var(--danger);border-color:var(--danger)}
+
+.addbtn{
+  width:100%;background:transparent;border:1px dashed var(--line-strong);border-radius:var(--r);
+  padding:9px;color:var(--linen-2);
+}
+.addbtn:hover{background:rgba(180,135,74,.10)}
+
+
+/* ---------- modal ---------- */
+.scrim{position:fixed;inset:0;background:rgba(6,10,11,.72);display:grid;place-items:center;padding:24px;z-index:50}
+.sheet{
+  background:var(--ink-800);border:1px solid var(--line-strong);border-radius:5px;
+  width:min(720px,100%);max-height:86vh;overflow:auto;padding:22px;
+  box-shadow:0 30px 90px rgba(0,0,0,.6);
+}
+.sheet h3{font-family:var(--display);font-size:20px;margin:0 0 4px;color:var(--linen)}
+.sheet .sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+.sheet-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:20px}
+.preview-frame{width:100%;height:min(70vh,640px);border:1px solid var(--line-strong);border-radius:var(--r);background:#000}
+.sheet.wide{width:min(1100px,100%)}
+
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;
+  background:var(--ink-600);border:1px solid var(--line-strong);border-radius:var(--r);
+  padding:10px 18px;color:var(--linen);box-shadow:0 12px 40px rgba(0,0,0,.5);
+}
+.hidden{display:none!important}
+
+@media (max-width:1080px){
+  .workspace{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
+  .panel.left{max-height:150px;border-right:none;border-bottom:1px solid var(--line)}
+  .panel.right{max-height:44vh;border-left:none;border-top:1px solid var(--line)}
+}
+
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">Atlas<em>.</em></div>
+    <div class="spacer"></div>
+    <button class="tbtn" id="btnSettings">Map settings</button>
+    <button class="tbtn" id="btnLoad">Open project</button>
+    <button class="tbtn" id="btnSave">Save project</button>
+    <button class="tbtn" id="btnPreview">Preview</button>
+    <button class="tbtn primary" id="btnExport">Export site</button>
+  </header>
+
+  <div class="workspace">
+    <aside class="panel left">
+      <div class="panel-head"><h2>Points of interest</h2><span class="count" id="poiCount"></span></div>
+      <div class="panel-body">
+        <ul class="poi-list" id="poiList"></ul>
+        <div class="empty hidden" id="poiEmpty">
+          <strong>No points yet.</strong>
+          Click “Add point” and then a spot on the map.
+        </div>
+      </div>
+      <div style="padding:10px;border-top:1px solid var(--line)">
+        <button class="addbtn" id="btnAddPoi">Add point</button>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="viewport" id="viewport">
+        <div class="canvas" id="canvas"></div>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <div class="card">
+          <h3>Start with a map</h3>
+          <p>Drop a map image here, or pick one from your disk. JPG, PNG and WEBP all work.</p>
+          <button class="tbtn primary" id="btnPickMap">Choose map image</button>
+        </div>
+      </div>
+      <div class="sessbar hidden" id="sessBar">
+        <button id="sessPrev" title="Previous session">‹</button>
+        <span class="sess-name" id="sessName"></span>
+        <span class="sess-count" id="sessCount"></span>
+        <button id="sessNext" title="Next session">›</button>
+      </div>
+      <div class="stage-hint hidden" id="stageHint">Click the map to place the point. Esc cancels.</div>
+      <div class="zoombar hidden" id="zoombar">
+        <button id="zIn" title="Zoom in">+</button>
+        <button id="zOut" title="Zoom out">−</button>
+        <button id="zFit" title="Fit the whole map" style="font-size:12px">fit</button>
+      </div>
+    </main>
+
+    <aside class="panel right">
+      <div class="panel-head"><h2 id="inspTitle">Point detail</h2></div>
+      <div class="panel-body" id="inspector">
+        <div class="empty">
+          <strong>Nothing selected.</strong>
+          Pick a point in the list or on the map and edit its description and characters.
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<input type="file" id="filePicker" accept="image/*" class="hidden">
+<input type="file" id="jsonPicker" accept="application/json,.json" class="hidden">
+<div id="overlay"></div>
+
+<script>
+"use strict";
+
+/* ============================ icons ============================ */
+var ICONS = {
+  city:      '<path d="M3 21V11l4-3 4 3v10M11 21V7l5-4 5 4v14M6 21v-4h2v4M15 12h2M15 16h2"/>',
+  village:   '<path d="M4 21v-8l8-6 8 6v8M9 21v-6h6v6"/>',
+  fortress:  '<path d="M4 21V8h2V5h3v3h6V5h3v3h2v13M9 21v-6h6v6"/>',
+  port:      '<path d="M12 7v13M8 10h8M12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4M4 15a8 8 0 0 0 16 0"/>',
+  mountains: '<path d="M2 20l6-11 4 6 3-5 7 10z"/>',
+  forest:    '<path d="M12 3l6 8h-4l4 6H6l4-6H6z M12 17v4"/>',
+  ruin:      '<path d="M5 21V9l2-2v8M11 21V6l2-2v13M17 21v-6l2-2v8M3 21h18"/>',
+  place:     '<path d="M12 2l2.6 6.3 6.8.5-5.2 4.4 1.6 6.6L12 16.3 6.2 19.8l1.6-6.6L2.6 8.8l6.8-.5z"/>',
+  // a point of interest can be someone rather than somewhere
+  person:    '<path d="M12 11.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4.8 20.5a7.2 7.2 0 0 1 14.4 0"/>'
+};
+var TYPE_LABELS = {city:"City",village:"Village",fortress:"Fortress",port:"Port",mountains:"Mountains",forest:"Forest",ruin:"Ruin",place:"Place",person:"Person"};
+/* Projects saved before the interface switched to English carry Slovak type keys.
+   Translate them on load so their points keep the icon they were given. */
+var TYPE_ALIASES = {mesto:"city",dedina:"village",pevnost:"fortress",pristav:"port",hory:"mountains",les:"forest",ruina:"ruin",miesto:"place"};
+function normType(t){
+  t = TYPE_ALIASES[t] || t;
+  return TYPE_LABELS[t] ? t : "place";
+}
+function iconSvg(t){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[t]||ICONS.place)+'</svg>';
+}
+
+/* ============================ state ============================ */
+var S = null;
+var sel = null;          // id of the selected point
+var selReg = null;       // id of the selected region (a point or a region is selected, never both)
+var mode = null;         // null | "poi" | "anchor" | "area" — what a click is placing right now
+var modeReg = null;      // id of the region whose area or big pin is being drawn
+var draft = null;        // polygon being drawn [[x,y],…]
+var tab = "area";        // inspector tab
+var curSession = 0;      // index into S.sessions — which moment of the campaign is being edited
+var view = {z:1, x:0, y:0};
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+
+function blank(){
+  return {
+    v:1,
+    title:"Untitled atlas",
+    subtitle:"",
+    intro:"",
+    map:null,                       // {src,w,h}
+    frame:true,                     // engrave a border onto the sheet (off for maps that have one)
+    titleImage:null,                // artwork shown above the map when the view is pulled back
+    // Sessions are the atlas read at different moments of the campaign. They share one map,
+    // one set of points and all their text — only where a point stands can differ. An empty
+    // list means the atlas has no timeline at all, which is how every atlas starts.
+    sessions:[],                    // [{id,label}] in chronological order
+    factions:[
+      newRegion("Neutral", "#4e8f7e")
+    ],
+    pois:[]
+  };
+}
+function newSession(label){ return {id:uid(), label:label}; }
+/* Where a point stands in a given session: the last session up to that one that moved it,
+   and failing that the point's own coordinates. So a point stays put until something
+   actually moves it, and a new session starts out looking exactly like the one before. */
+function posAt(p, upto){
+  var x=p.x, y=p.y;
+  for(var i=0; i<=upto && i<S.sessions.length; i++){
+    var a = p.at && p.at[S.sessions[i].id];
+    if(a){ x=a.x; y=a.y; }
+  }
+  return {x:x, y:y};
+}
+function posOf(p){ return S.sessions.length ? posAt(p, curSession) : {x:p.x, y:p.y}; }
+/* Moving a point writes into the session being edited, never into the ones before it. */
+function moveTo(p, n){
+  if(!S.sessions.length){ p.x=n.x; p.y=n.y; return; }
+  var sid = S.sessions[curSession].id;
+  if(!p.at) p.at = {};
+  p.at[sid] = {x:n.x, y:n.y};
+}
+function movedHere(p){
+  return !!(S.sessions.length && p.at && p.at[S.sessions[curSession].id]);
+}
+/* A region is a faction that can additionally carry borders and a big pin.
+   Both are optional — a faction without official borders leaves `area` and `anchor` empty. */
+function newRegion(label, color){
+  return {
+    id:uid(), label:label, color:color,
+    area:null,                      // [[x,y],…] relative polygon coordinates
+    anchor:null,                    // {x,y} where the big pin sits
+    summary:"", description:"", image:null, characters:[]
+  };
+}
+function newPoi(x,y){
+  return {
+    id:uid(), name:"New point", type:"city", factionId:S.factions[0] ? S.factions[0].id : null,
+    x:x, y:y, hidden:false,
+    summary:"", description:"",
+    images:[],                      // pictures of the place; the first one leads
+    characters:[]
+  };
+}
+function newChar(){ return {id:uid(), name:"New character", role:"", description:"", image:null}; }
+function facOf(p){
+  for(var i=0;i<S.factions.length;i++) if(S.factions[i].id===p.factionId) return S.factions[i];
+  return null;
+}
+function colorOf(p){ var f=facOf(p); return f ? f.color : "#8a8f8c"; }
+function poiById(id){ for(var i=0;i<S.pois.length;i++) if(S.pois[i].id===id) return S.pois[i]; return null; }
+function regById(id){ for(var i=0;i<S.factions.length;i++) if(S.factions[i].id===id) return S.factions[i]; return null; }
+function hasArea(f){ return !!(f.area && f.area.length>2); }
+
+function selectPoi(id){ sel=id; selReg=null; tab="area"; }
+function selectRegion(id){ selReg=id; sel=null; tab="area"; }
+function selectNone(){ sel=null; selReg=null; }
+
+/* ============================ images ============================ */
+function readImage(file, maxDim, quality){
+  return new Promise(function(res, rej){
+    if(!file || !/^image\//.test(file.type)) return rej(new Error("That is not an image."));
+    var url = URL.createObjectURL(file);
+    var im = new Image();
+    im.onload = function(){
+      var w = im.naturalWidth, h = im.naturalHeight;
+      var sc = Math.min(1, maxDim / Math.max(w,h));
+      var cw = Math.round(w*sc), ch = Math.round(h*sc);
+      var c = document.createElement("canvas"); c.width=cw; c.height=ch;
+      var ctx = c.getContext("2d");
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(im, 0, 0, cw, ch);
+      var hasAlpha = /png|webp/i.test(file.type);
+      var out = c.toDataURL(hasAlpha ? "image/webp" : "image/jpeg", quality);
+      if(out.length > 200 && out.indexOf("data:image/webp") !== 0 && hasAlpha){
+        out = c.toDataURL("image/jpeg", quality);
+      }
+      URL.revokeObjectURL(url);
+      res({src:out, w:cw, h:ch});
+    };
+    im.onerror = function(){ URL.revokeObjectURL(url); rej(new Error("The image could not be loaded.")); };
+    im.src = url;
+  });
+}
+function pickFile(accept){
+  return new Promise(function(res){
+    var inp = document.createElement("input");
+    inp.type="file"; inp.accept=accept||"image/*";
+    inp.onchange=function(){ res(inp.files && inp.files[0] ? inp.files[0] : null); };
+    inp.click();
+  });
+}
+function pickFiles(accept){
+  return new Promise(function(res){
+    var inp = document.createElement("input");
+    inp.type="file"; inp.accept=accept||"image/*"; inp.multiple=true;
+    inp.onchange=function(){ res(inp.files ? Array.prototype.slice.call(inp.files) : []); };
+    inp.click();
+  });
+}
+function bytesOf(str){ return Math.round((str ? str.length : 0) * 0.75); }
+function fmtSize(b){
+  if(b < 1024) return b+" B";
+  if(b < 1048576) return (b/1024).toFixed(0)+" kB";
+  return (b/1048576).toFixed(1)+" MB";
+}
+
+/* ============================ persistence ============================ */
+var DB=null;
+function openDb(){
+  return new Promise(function(res){
+    try{
+      var rq = indexedDB.open("atlas-editor", 1);
+      rq.onupgradeneeded=function(){ rq.result.createObjectStore("kv"); };
+      rq.onsuccess=function(){ DB=rq.result; res(DB); };
+      rq.onerror=function(){ res(null); };
+    }catch(e){ res(null); }
+  });
+}
+function dbSet(k,v){
+  if(!DB) return Promise.resolve();
+  return new Promise(function(res){
+    try{
+      var tx = DB.transaction("kv","readwrite");
+      tx.objectStore("kv").put(v,k);
+      tx.oncomplete=function(){res()}; tx.onerror=function(){res()};
+    }catch(e){ res(); }
+  });
+}
+function dbGet(k){
+  if(!DB) return Promise.resolve(null);
+  return new Promise(function(res){
+    try{
+      var tx = DB.transaction("kv","readonly");
+      var rq = tx.objectStore("kv").get(k);
+      rq.onsuccess=function(){ res(rq.result || null); };
+      rq.onerror=function(){ res(null); };
+    }catch(e){ res(null); }
+  });
+}
+var saveTimer=null;
+function persist(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){ dbSet("project", S); }, 500);
+}
+
+/* ============================ map: pan & zoom ============================ */
+var vp = document.getElementById("viewport");
+var cv = document.getElementById("canvas");
+
+// keep the map inside the viewport: panning stops at the image edges, and an axis
+// that is smaller than the viewport stays centred
+function clampView(){
+  if(!S.map) return;
+  var r = vp.getBoundingClientRect();
+  var w = S.map.w*view.z, h = S.map.h*view.z;
+  view.x = w <= r.width  ? (r.width-w)/2  : Math.min(0, Math.max(r.width-w,  view.x));
+  view.y = h <= r.height ? (r.height-h)/2 : Math.min(0, Math.max(r.height-h, view.y));
+}
+function applyView(){
+  clampView();
+  cv.style.transform = "translate("+view.x+"px,"+view.y+"px) scale("+view.z+")";
+  cv.style.setProperty("--inv", 1/view.z);
+  // vertices of the polygon being drawn stay the same size at every zoom level
+  var vt = cv.querySelectorAll(".vtx");
+  for(var i=0;i<vt.length;i++) vt[i].setAttribute("r", 5/view.z);
+}
+// How much further than "the whole map" the view may be pulled back. A map cut to the shape
+// of the screen would otherwise sit edge to edge, with no room around it to see.
+var PULL_BACK = 0.7;
+// the zoom level at which the whole map fits the viewport
+function fitZoom(){
+  if(!S.map) return 0.05;
+  var r = vp.getBoundingClientRect();
+  var pad = 40;
+  return Math.min((r.width-pad)/S.map.w, (r.height-pad)/S.map.h);
+}
+function fitView(){
+  if(!S.map) return;
+  var r = vp.getBoundingClientRect();
+  var z = fitZoom();
+  view.z = z;
+  view.x = (r.width - S.map.w*z)/2;
+  view.y = (r.height - S.map.h*z)/2;
+  applyView();
+}
+function zoomAt(cx, cy, factor){
+  var r = vp.getBoundingClientRect();
+  var px = cx - r.left, py = cy - r.top;
+  var nz = Math.max(fitZoom()*PULL_BACK, Math.min(12, view.z*factor));
+  var k = nz/view.z;
+  view.x = px - (px - view.x)*k;
+  view.y = py - (py - view.y)*k;
+  view.z = nz;
+  applyView();
+}
+vp.addEventListener("wheel", function(e){
+  if(!S.map) return;
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.15 : 1/1.15);
+}, {passive:false});
+
+var panning=null, panMoved=false;
+vp.addEventListener("pointerdown", function(e){
+  if(!S.map) return;
+  panMoved=false;
+  if(e.target.closest(".pin")) return;
+  if(mode) return;
+  panning={id:e.pointerId, sx:e.clientX, sy:e.clientY, x0:e.clientX, y0:e.clientY, ox:view.x, oy:view.y, moved:false};
+  vp.setPointerCapture(e.pointerId);
+  vp.classList.add("panning");
+});
+vp.addEventListener("pointermove", function(e){
+  if(!panning || e.pointerId!==panning.id) return;
+  view.x = panning.ox + (e.clientX-panning.sx);
+  view.y = panning.oy + (e.clientY-panning.sy);
+  if(Math.abs(e.clientX-panning.x0)+Math.abs(e.clientY-panning.y0) > 3){ panning.moved=true; panMoved=true; }
+  applyView();
+  // re-base on the clamped position, so dragging back from an edge responds at once
+  panning.sx=e.clientX; panning.sy=e.clientY; panning.ox=view.x; panning.oy=view.y;
+});
+function endPan(e){
+  if(panning && e.pointerId===panning.id){ panning=null; vp.classList.remove("panning"); }
+}
+vp.addEventListener("pointerup", endPan);
+vp.addEventListener("pointercancel", endPan);
+
+function normFromEvent(e){
+  var r = cv.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (e.clientX - r.left)/r.width)),
+    y: Math.max(0, Math.min(1, (e.clientY - r.top)/r.height))
+  };
+}
+function nearFirstVertex(e){
+  if(!draft || draft.length<3) return false;
+  var r = cv.getBoundingClientRect();
+  var fx = r.left + draft[0][0]*r.width, fy = r.top + draft[0][1]*r.height;
+  return Math.abs(e.clientX-fx) + Math.abs(e.clientY-fy) < 14;
+}
+vp.addEventListener("click", function(e){
+  if(!S.map) return;
+  if(panMoved){ panMoved=false; return; }
+
+  if(mode==="poi"){
+    var n = normFromEvent(e);
+    var p = newPoi(n.x, n.y);
+    S.pois.push(p);
+    setMode(null);
+    selectPoi(p.id);
+    renderAll(); persist();
+    var fld = document.getElementById("poiName"); if(fld){ fld.focus(); fld.select(); }
+    return;
+  }
+  if(mode==="anchor"){
+    var r = regById(modeReg);
+    if(r){ var na = normFromEvent(e); r.anchor = {x:na.x, y:na.y}; selectRegion(r.id); }
+    setMode(null);
+    renderAll(); persist();
+    return;
+  }
+  if(mode==="area"){
+    if(nearFirstVertex(e)){ closeDraft(); return; }
+    var nv = normFromEvent(e);
+    draft.push([nv.x, nv.y]);
+    refreshAreas();
+    return;
+  }
+  // a click inside a region's area selects it — otherwise a region without a big pin could not be picked
+  var pg = e.target.closest && e.target.closest("polygon[data-reg]");
+  if(pg){ selectRegion(pg.getAttribute("data-reg")); renderAll(); }
+});
+document.addEventListener("keydown", function(e){
+  var t = e.target;
+  var typing = t && (t.tagName==="INPUT" || t.tagName==="TEXTAREA" || t.tagName==="SELECT");
+  if(e.key==="Escape"){
+    if(mode){ setMode(null); refreshAreas(); }
+    return;
+  }
+  if(!mode || typing) return;
+  if(mode==="area" && e.key==="Enter"){ e.preventDefault(); closeDraft(); }
+  if(mode==="area" && e.key==="Backspace"){
+    e.preventDefault();
+    if(draft && draft.length){ draft.pop(); refreshAreas(); }
+  }
+});
+
+function setMode(m, regId){
+  mode = m || null;
+  modeReg = mode ? (regId||null) : null;
+  draft = (mode==="area") ? (draft||[]) : null;
+  vp.classList.toggle("adding", !!mode);
+  var hint = document.getElementById("stageHint");
+  hint.classList.toggle("hidden", !mode);
+  hint.textContent =
+    mode==="poi"    ? "Click the map to place the point. Esc cancels." :
+    mode==="anchor" ? "Click the map to place the region's big pin. Esc cancels." :
+    mode==="area"   ? "Click the vertices of the area. Enter or a click on the first vertex closes it, Backspace takes the last one back, Esc cancels." : "";
+  document.getElementById("btnAddPoi").textContent = mode==="poi" ? "Cancel placing" : "Add point";
+}
+function startArea(regId){ draft=[]; setMode("area", regId); renderAll(); }
+function closeDraft(){
+  var f = regById(modeReg);
+  if(f && draft && draft.length>2) f.area = draft.slice();
+  else if(draft && draft.length) toast("An area needs at least three vertices.");
+  setMode(null);
+  renderAll(); persist();
+}
+
+/* ============================ render: map ============================ */
+function renderMap(){
+  var dz = document.getElementById("dropzone");
+  dz.classList.toggle("hidden", !!S.map);
+  document.getElementById("zoombar").classList.toggle("hidden", !S.map);
+  cv.innerHTML = "";
+  if(!S.map) return;
+  cv.style.width = S.map.w+"px";
+  var img = new Image();
+  img.src = S.map.src; img.alt="";
+  cv.appendChild(img);
+
+  renderAreas();
+  if(S.frame) cv.insertAdjacentHTML("beforeend", frameHtml(S.map.w, S.map.h));
+
+  S.factions.forEach(function(f){
+    if(!f.anchor) return;
+    var el = document.createElement("div");
+    el.className="pin big"; el.dataset.reg=f.id;
+    el.style.left = (f.anchor.x*100)+"%"; el.style.top = (f.anchor.y*100)+"%";
+    el.style.setProperty("--pc", f.color);
+    if(selReg===f.id) el.dataset.sel="1";
+    el.innerHTML = '<div class="lbl"></div>';   // a region is only its lettering
+    el.querySelector(".lbl").textContent = f.label;
+    attachDrag(el,
+      function(n){ f.anchor.x=n.x; f.anchor.y=n.y; },
+      function(){ selectRegion(f.id); renderAll(); });
+    cv.appendChild(el);
+  });
+
+  S.pois.forEach(function(p){
+    var el = document.createElement("div");
+    var at = posOf(p);
+    el.className="pin"; el.dataset.id=p.id; el.dataset.type=p.type;
+    el.style.left = (at.x*100)+"%"; el.style.top = (at.y*100)+"%";
+    el.style.setProperty("--pc", colorOf(p));
+    if(sel===p.id) el.dataset.sel="1";
+    if(p.hidden) el.dataset.hidden="1";
+    if(movedHere(p)) el.dataset.moved="1";
+    el.innerHTML = '<div class="knob">'+iconSvg(p.type)+'</div><div class="lbl"></div>';
+    el.querySelector(".lbl").textContent = p.name;
+    attachDrag(el,
+      function(n){ moveTo(p, n); },
+      function(){ selectPoi(p.id); renderAll(); });
+    cv.appendChild(el);
+  });
+}
+/* A border engraved onto the sheet, for map images that bring none of their own: two rules
+   with a tinted margin between them and a lozenge at the corners and the middle of each side.
+   Everything is in map units, so it zooms with the map and moves no point. Kept identical to
+   frameHtml() in viewer.html, or the preview would stop matching the export. */
+function frameHtml(w,h){
+  var u=Math.min(w,h), pad=u*.013, band=u*.021, sw=Math.max(.8,u*.0016);
+  var x0=pad+band, y0=pad+band, x1=w-pad-band, y1=h-pad-band;
+  function f(n){ return Math.round(n*10)/10; }
+  function rect(x,y,rw,rh){ return "M"+f(x)+" "+f(y)+"h"+f(rw)+"v"+f(rh)+"h"+f(-rw)+"Z"; }
+  function loz(cx,cy,r){
+    return "M"+f(cx)+" "+f(cy-r)+"L"+f(cx+r)+" "+f(cy)+"L"+f(cx)+" "+f(cy+r)+"L"+f(cx-r)+" "+f(cy)+"Z";
+  }
+  var outer=rect(pad,pad,w-2*pad,h-2*pad), inner=rect(x0,y0,x1-x0,y1-y0);
+  var mx=(x0+x1)/2, my=(y0+y1)/2, big=band*.62, small=band*.3;
+  var orn=loz(x0,y0,big)+loz(x1,y0,big)+loz(x1,y1,big)+loz(x0,y1,big)
+         +loz(mx,y0,small)+loz(mx,y1,small)+loz(x0,my,small)+loz(x1,my,small);
+  return '<svg class="frame" viewBox="0 0 '+w+' '+h+'" aria-hidden="true"'
+    +' style="box-shadow:inset 0 0 '+Math.round(u*.045)+'px rgba(6,10,11,.5)">'
+    +'<path class="band" fill-rule="evenodd" d="'+outer+inner+'"/>'
+    +'<path class="rule" stroke-width="'+f(sw*1.8)+'" d="'+outer+'"/>'
+    +'<path class="rule" stroke-width="'+f(sw)+'" d="'+inner+'"/>'
+    +'<path class="orn" d="'+orn+'"/></svg>';
+}
+
+/* Areas are drawn from relative coordinates converted to map pixels, so they
+   pan and zoom together with the base image. In the export they are invisible. */
+function ptsOf(list){
+  return list.map(function(pt){
+    return (pt[0]*S.map.w).toFixed(1)+","+(pt[1]*S.map.h).toFixed(1);
+  }).join(" ");
+}
+function renderAreas(){
+  var NS = "http://www.w3.org/2000/svg";
+  var drawn = S.factions.filter(hasArea);
+  if(!drawn.length && !draft) return;
+  var svg = document.createElementNS(NS,"svg");
+  svg.setAttribute("class","areas");
+  svg.setAttribute("width", S.map.w);
+  svg.setAttribute("height", S.map.h);
+  svg.setAttribute("viewBox", "0 0 "+S.map.w+" "+S.map.h);
+
+  drawn.forEach(function(f){
+    if(mode==="area" && modeReg===f.id) return;   // this is the one being redrawn
+    var pg = document.createElementNS(NS,"polygon");
+    pg.setAttribute("points", ptsOf(f.area));
+    pg.setAttribute("data-reg", f.id);
+    if(selReg===f.id) pg.setAttribute("data-sel","1");
+    pg.style.setProperty("--ac", f.color);
+    svg.appendChild(pg);
+  });
+
+  if(draft && draft.length){
+    var dr = regById(modeReg);
+    var color = dr ? dr.color : "#dcae6a";
+    var pl = document.createElementNS(NS,"polyline");
+    pl.setAttribute("class","draft");
+    pl.setAttribute("points", ptsOf(draft));
+    pl.style.setProperty("--ac", color);
+    svg.appendChild(pl);
+    draft.forEach(function(pt){
+      var c = document.createElementNS(NS,"circle");
+      c.setAttribute("class","vtx");
+      c.setAttribute("cx", (pt[0]*S.map.w).toFixed(1));
+      c.setAttribute("cy", (pt[1]*S.map.h).toFixed(1));
+      c.setAttribute("r", 5/view.z);
+      c.style.setProperty("--ac", color);
+      svg.appendChild(c);
+    });
+  }
+  // areas belong under the points, otherwise the polygon would steal clicks from the pins above it
+  var firstPin = cv.querySelector(".pin");
+  if(firstPin) cv.insertBefore(svg, firstPin); else cv.appendChild(svg);
+}
+/* While drawing it is enough to repaint the areas layer — renderMap() would rebuild
+   the <img> holding the whole map as a data URI every time and the image would flicker. */
+function refreshAreas(){
+  var old = cv.querySelector(".areas");
+  if(old) old.remove();
+  if(S.map) renderAreas();
+}
+function attachDrag(el, move, pick){
+  var drag=null;
+  el.addEventListener("pointerdown", function(e){
+    e.stopPropagation();
+    drag={id:e.pointerId, moved:false};
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener("pointermove", function(e){
+    if(!drag || e.pointerId!==drag.id) return;
+    drag.moved=true;
+    var n = normFromEvent(e);
+    move(n);
+    el.style.left=(n.x*100)+"%"; el.style.top=(n.y*100)+"%";
+  });
+  el.addEventListener("pointerup", function(e){
+    if(!drag || e.pointerId!==drag.id) return;
+    if(drag.moved){ persist(); }
+    else { pick(); }
+    drag=null;
+  });
+}
+
+/* ============================ render: list ============================ */
+function renderList(){
+  var ul = document.getElementById("poiList");
+  ul.innerHTML="";
+  document.getElementById("poiCount").textContent = S.pois.length ? S.pois.length : "";
+  document.getElementById("poiEmpty").classList.toggle("hidden", S.pois.length>0);
+  S.pois.forEach(function(p){
+    var li = document.createElement("li");
+    li.className="poi-item"; li.setAttribute("aria-selected", sel===p.id ? "true":"false");
+    var dot = document.createElement("span"); dot.className="dot"; dot.style.background=colorOf(p);
+    var nm = document.createElement("span"); nm.className="nm"; nm.textContent = p.name || "(unnamed)";
+    var meta = document.createElement("span"); meta.className="meta";
+    meta.textContent = (p.characters.length ? p.characters.length+"◦" : "") + (p.hidden ? " hidden" : "");
+    li.appendChild(dot); li.appendChild(nm); li.appendChild(meta);
+    li.onclick=function(){ selectPoi(p.id); renderAll(); centerOn(p); };
+    ul.appendChild(li);
+  });
+}
+function centerOn(p){
+  if(!S.map) return;
+  var r = vp.getBoundingClientRect();
+  view.x = r.width/2 - p.x*S.map.w*view.z;
+  view.y = r.height/2 - p.y*S.map.h*view.z;
+  applyView();
+}
+
+/* ============================ render: inspector ============================ */
+function el(tag, cls, txt){
+  var e=document.createElement(tag);
+  if(cls) e.className=cls;
+  if(txt!=null) e.textContent=txt;
+  return e;
+}
+function field(label, node){
+  var f = el("div","field");
+  var l = el("label", null, label);
+  f.appendChild(l); f.appendChild(node);
+  return f;
+}
+function input(value, oninput, placeholder){
+  var i = el("input","inp"); i.value = value||""; if(placeholder) i.placeholder=placeholder;
+  i.addEventListener("input", function(){ oninput(i.value); });
+  return i;
+}
+function textarea(value, oninput, placeholder, rows){
+  var t = el("textarea","inp"); t.value=value||""; if(placeholder) t.placeholder=placeholder;
+  if(rows) t.rows=rows;
+  t.addEventListener("input", function(){ oninput(t.value); });
+  return t;
+}
+function imagePicker(current, onset, hint, maxDim){
+  var box = el("div","thumb");
+  function paint(){
+    box.innerHTML="";
+    if(current){
+      var im=new Image(); im.src=current; im.alt=""; box.appendChild(im);
+      var x = el("button","x","×"); x.title="Remove image";
+      x.onclick=function(ev){ ev.stopPropagation(); current=null; onset(null); paint(); };
+      box.appendChild(x);
+    } else {
+      box.appendChild(el("span",null,hint||"Click to add an image"));
+    }
+  }
+  box.onclick=function(){
+    pickFile("image/*").then(function(f){
+      if(!f) return;
+      return readImage(f, maxDim||1400, .82).then(function(r){
+        current=r.src; onset(r.src); paint();
+      });
+    }).catch(function(e){ toast(e.message); });
+  };
+  paint();
+  return box;
+}
+
+/* Several pictures of one place. The first one leads: it is drawn large here, it is what the
+   panel shows when there is only one, and on the finished map it sets the shape of the
+   gallery frame. The ‹ on a picture moves it one place earlier. */
+function galleryPicker(owner){
+  var box = el("div","gallery");
+  function paint(){
+    box.innerHTML="";
+    owner.images.forEach(function(src, i){
+      var t = el("div","thumb");
+      var im = new Image(); im.src=src; im.alt=""; t.appendChild(im);
+      var x = el("button","x","×"); x.title="Remove image";
+      x.onclick=function(){ owner.images.splice(i,1); paint(); persist(); };
+      t.appendChild(x);
+      if(i>0){
+        var l = el("button","x left","‹"); l.title="Move earlier";
+        l.onclick=function(){
+          var moved = owner.images.splice(i,1)[0];
+          owner.images.splice(i-1, 0, moved); paint(); persist();
+        };
+        t.appendChild(l);
+      }
+      box.appendChild(t);
+    });
+    var add = el("div","thumb add", owner.images.length ? "Add images" : "Click to add pictures of the place");
+    add.onclick=function(){
+      pickFiles("image/*").then(function(files){
+        // one after another, so they land in the order they were picked
+        return files.reduce(function(chain, f){
+          return chain.then(function(){
+            return readImage(f, 1400, .82).then(function(r){ owner.images.push(r.src); });
+          });
+        }, Promise.resolve());
+      }).then(function(){ paint(); persist(); })
+        .catch(function(e){ toast(e.message); paint(); persist(); });
+    };
+    box.appendChild(add);
+  }
+  paint();
+  return box;
+}
+
+function renderInspector(){
+  var host = document.getElementById("inspector");
+  host.innerHTML="";
+  if(selReg){
+    var f = regById(selReg);
+    if(f){ renderRegionInspector(host, f); return; }
+    selReg = null;
+  }
+  var p = sel ? poiById(sel) : null;
+  document.getElementById("inspTitle").textContent = p ? p.name : "Point detail";
+  if(!p){
+    var e = el("div","empty");
+    e.appendChild(el("strong",null,"Nothing selected."));
+    e.appendChild(document.createTextNode("Pick a point in the list or on the map and edit its description and characters."));
+    host.appendChild(e);
+    return;
+  }
+
+  var tabs = el("div","tabs");
+  [["area","Area"],["chars","Characters ("+p.characters.length+")"]].forEach(function(t){
+    var b = el("button",null,t[1]);
+    b.setAttribute("aria-selected", tab===t[0] ? "true":"false");
+    b.onclick=function(){ tab=t[0]; renderInspector(); };
+    tabs.appendChild(b);
+  });
+  host.appendChild(tabs);
+
+  if(tab==="area"){
+    var nameI = input(p.name, function(v){ p.name=v; renderList(); renderMap();
+      document.getElementById("inspTitle").textContent=v; persist(); });
+    nameI.id="poiName";
+    host.appendChild(field("Name", nameI));
+
+    var grid = el("div","row2");
+    var typeSel = el("select","inp");
+    Object.keys(TYPE_LABELS).forEach(function(k){
+      var o=el("option",null,TYPE_LABELS[k]); o.value=k; if(p.type===k) o.selected=true;
+      typeSel.appendChild(o);
+    });
+    typeSel.onchange=function(){ p.type=typeSel.value; renderMap(); persist(); };
+    var facSel = el("select","inp");
+    S.factions.forEach(function(f){
+      var o=el("option",null,f.label); o.value=f.id; if(p.factionId===f.id) o.selected=true;
+      facSel.appendChild(o);
+    });
+    facSel.onchange=function(){ p.factionId=facSel.value; renderMap(); renderList(); persist(); };
+    var g1=el("div","field"); g1.appendChild(el("label",null,"Type")); g1.appendChild(typeSel);
+    var g2=el("div","field"); g2.appendChild(el("label",null,"Faction")); g2.appendChild(facSel);
+    grid.appendChild(g1); grid.appendChild(g2);
+    host.appendChild(grid);
+
+    host.appendChild(field("Area images", galleryPicker(p)));
+
+    host.appendChild(field("Short description",
+      input(p.summary, function(v){ p.summary=v; persist(); }, "One sentence, shown right under the name")));
+
+    host.appendChild(field("Area description",
+      textarea(p.description, function(v){ p.description=v; persist(); },
+        "Text for the players. A blank line starts a new paragraph.", 9)));
+
+    if(S.sessions.length>1){
+      var where = el("div","field");
+      where.appendChild(el("label",null,"In "+S.sessions[curSession].label));
+      if(movedHere(p)){
+        where.appendChild(el("p","sub","Moved in this session. Earlier sessions keep the point where it was."));
+        var undo = el("button","mini","Put it back where it was");
+        undo.onclick=function(){
+          delete p.at[S.sessions[curSession].id];
+          renderAll(); persist();
+        };
+        where.appendChild(undo);
+      } else {
+        where.appendChild(el("p","sub","Standing where the earlier sessions left it. Drag it on the map to move it from this session onwards."));
+      }
+      host.appendChild(where);
+    }
+
+    var hid = el("label","field");
+    hid.style.display="flex"; hid.style.alignItems="center"; hid.style.gap="8px";
+    var cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!p.hidden;
+    cb.onchange=function(){ p.hidden=cb.checked; renderMap(); renderList(); persist(); };
+    hid.appendChild(cb); hid.appendChild(document.createTextNode("Hide from players (not exported)"));
+    host.appendChild(hid);
+
+    var del = el("button","mini del","Delete point");
+    del.onclick=function(){
+      if(!confirm("Delete “"+p.name+"” and its characters?")) return;
+      S.pois = S.pois.filter(function(q){ return q.id!==p.id; });
+      sel=null; renderAll(); persist();
+    };
+    var wrap=el("div"); wrap.style.textAlign="right"; wrap.appendChild(del);
+    host.appendChild(wrap);
+  } else {
+    renderChars(host, p);
+  }
+}
+
+/* Characters look the same on a point and on a region, only the owner differs. */
+function renderChars(host, owner){
+  owner.characters.forEach(function(c, idx){
+    var box = el("div","char");
+    var top = el("div","char-top");
+    top.appendChild(imagePicker(c.image, function(v){ c.image=v; persist(); }, "portrait", 700));
+    var fields = el("div","fields");
+    fields.appendChild(input(c.name, function(v){ c.name=v; persist(); }, "Name"));
+    fields.appendChild(input(c.role, function(v){ c.role=v; persist(); }, "Role, e.g. captain of the guard"));
+    top.appendChild(fields);
+    box.appendChild(top);
+    box.appendChild(textarea(c.description, function(v){ c.description=v; persist(); }, "Who they are, what they want, what they hide.", 4));
+    var acts = el("div","char-actions");
+    if(idx>0){
+      var up=el("button","mini","↑");
+      up.onclick=function(){ var t=owner.characters[idx-1]; owner.characters[idx-1]=c; owner.characters[idx]=t; renderInspector(); persist(); };
+      acts.appendChild(up);
+    }
+    if(idx<owner.characters.length-1){
+      var dn=el("button","mini","↓");
+      dn.onclick=function(){ var t=owner.characters[idx+1]; owner.characters[idx+1]=c; owner.characters[idx]=t; renderInspector(); persist(); };
+      acts.appendChild(dn);
+    }
+    var rm=el("button","mini del","Remove");
+    rm.onclick=function(){ owner.characters.splice(idx,1); renderInspector(); renderList(); persist(); };
+    acts.appendChild(rm);
+    box.appendChild(acts);
+    host.appendChild(box);
+  });
+  var add = el("button","addbtn","Add character");
+  add.onclick=function(){ owner.characters.push(newChar()); renderInspector(); renderList(); persist(); };
+  host.appendChild(add);
+}
+
+/* ============================ inspector: region ============================ */
+function renderRegionInspector(host, f){
+  document.getElementById("inspTitle").textContent = f.label;
+  // Characters belong to places, not to regions, so a region has only this one view.
+
+  host.appendChild(field("Region name",
+    input(f.label, function(v){ f.label=v; document.getElementById("inspTitle").textContent=v; renderMap(); renderList(); persist(); })));
+
+  var colWrap = el("div","field");
+  colWrap.appendChild(el("label",null,"Color"));
+  var col = document.createElement("input"); col.type="color"; col.value=f.color;
+  col.style.cssText="width:56px;height:32px;padding:2px;background:var(--ink-900);border:1px solid var(--line);border-radius:var(--r)";
+  col.oninput=function(){ f.color=col.value; renderMap(); renderList(); persist(); };
+  colWrap.appendChild(col);
+  host.appendChild(colWrap);
+
+  /* --- borders --- */
+  var areaBox = el("div","field");
+  areaBox.appendChild(el("label",null,"Area borders"));
+  areaBox.appendChild(el("p","sub", hasArea(f)
+    ? "The polygon has "+f.area.length+" vertices. On the finished map it is invisible — it is there only so that hovering shows the region's name."
+    : "No borders yet. A faction can exist without them."));
+  var areaActs = el("div","char-actions"); areaActs.style.justifyContent="flex-start";
+  var drawBtn = el("button","mini", hasArea(f) ? "Redraw area" : "Draw area");
+  drawBtn.onclick=function(){
+    if(!S.map) return toast("Upload a map image first.");
+    startArea(f.id);
+  };
+  areaActs.appendChild(drawBtn);
+  if(hasArea(f)){
+    var clr = el("button","mini del","Delete area");
+    clr.onclick=function(){ f.area=null; renderAll(); persist(); };
+    areaActs.appendChild(clr);
+  }
+  areaBox.appendChild(areaActs);
+  host.appendChild(areaBox);
+
+  /* --- big pin --- */
+  var pinBox = el("div","field");
+  pinBox.appendChild(el("label",null,"Big pin"));
+  pinBox.appendChild(el("p","sub", f.anchor
+    ? "It glows on the map and opens a panel with the region's description when clicked. Drag it to move it."
+    : "Without a big pin the region is not shown on the map and neither its description nor its characters are exported."));
+  var pinActs = el("div","char-actions"); pinActs.style.justifyContent="flex-start";
+  var placeBtn = el("button","mini", f.anchor ? "Move" : "Place big pin");
+  placeBtn.onclick=function(){
+    if(!S.map) return toast("Upload a map image first.");
+    setMode("anchor", f.id);
+  };
+  pinActs.appendChild(placeBtn);
+  if(f.anchor){
+    var rmPin = el("button","mini del","Remove pin");
+    rmPin.onclick=function(){ f.anchor=null; renderAll(); persist(); };
+    pinActs.appendChild(rmPin);
+  }
+  pinBox.appendChild(pinActs);
+  host.appendChild(pinBox);
+
+  host.appendChild(field("Region image",
+    imagePicker(f.image, function(v){ f.image=v; persist(); }, "Click to add a region image", 1400)));
+  host.appendChild(field("Short description",
+    input(f.summary, function(v){ f.summary=v; persist(); }, "One sentence under the region's name")));
+  host.appendChild(field("Region description",
+    textarea(f.description, function(v){ f.description=v; persist(); },
+      "What kind of land it is, who holds it, what goes on there.", 8)));
+
+  var back = el("button","mini","Clear selection");
+  back.onclick=function(){ selectNone(); renderAll(); };
+  var wrap = el("div"); wrap.style.textAlign="right"; wrap.appendChild(back);
+  host.appendChild(wrap);
+}
+
+function renderAll(){ renderSessions(); renderMap(); renderList(); renderInspector(); }
+
+/* ============================ sessions ============================ */
+var sessBar = document.getElementById("sessBar");
+function renderSessions(){
+  if(curSession > S.sessions.length-1) curSession = S.sessions.length-1;
+  if(curSession < 0) curSession = 0;
+  // one session is no timeline: the bar would only be in the way
+  sessBar.classList.toggle("hidden", !(S.map && S.sessions.length>1));
+  if(S.sessions.length<2) return;
+  document.getElementById("sessName").textContent = S.sessions[curSession].label;
+  document.getElementById("sessCount").textContent = (curSession+1)+" / "+S.sessions.length;
+  document.getElementById("sessPrev").disabled = curSession===0;
+  document.getElementById("sessNext").disabled = curSession===S.sessions.length-1;
+}
+function goSession(i){
+  curSession = Math.max(0, Math.min(S.sessions.length-1, i));
+  renderAll();
+}
+document.getElementById("sessPrev").onclick = function(){ goSession(curSession-1); };
+document.getElementById("sessNext").onclick = function(){ goSession(curSession+1); };
+
+/* ============================ toast + modal ============================ */
+function toast(msg){
+  var t = el("div","toast",msg);
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 2600);
+}
+function modal(build, wide){
+  var scrim = el("div","scrim");
+  var sheet = el("div","sheet"+(wide?" wide":""));
+  scrim.appendChild(sheet);
+  scrim.addEventListener("click", function(e){ if(e.target===scrim) close(); });
+  function close(){ scrim.remove(); document.removeEventListener("keydown", esc); }
+  function esc(e){ if(e.key==="Escape") close(); }
+  document.addEventListener("keydown", esc);
+  document.body.appendChild(scrim);
+  build(sheet, close);
+  return close;
+}
+
+/* ============================ map settings ============================ */
+document.getElementById("btnSettings").onclick = function(){
+  modal(function(sheet, close){
+    sheet.appendChild(el("h3",null,"Map settings"));
+    sheet.appendChild(el("p","sub","This appears in the header of the exported site."));
+    sheet.appendChild(field("Atlas name", input(S.title, function(v){ S.title=v; persist(); })));
+    sheet.appendChild(field("Subtitle", input(S.subtitle, function(v){ S.subtitle=v; persist(); }, "e.g. The Confluence, winter 1247")));
+    sheet.appendChild(field("Intro text", textarea(S.intro, function(v){ S.intro=v; persist(); }, "A short intro for the visitor. Optional.", 4)));
+
+    var art = imagePicker(S.titleImage, function(v){ S.titleImage=v; persist(); },
+      "Click to add title artwork", 1600);
+    art.classList.add("contain");
+    sheet.appendChild(field("Title artwork", art));
+    sheet.appendChild(el("p","sub","Shown above the map, in the open space that appears when the view is pulled back, and gone as soon as you move in. The finished map then opens pulled back, so it is the first thing a reader sees. A PNG with a transparent background works best; it keeps its transparency."));
+
+    sheet.appendChild(el("h3",null,"Sessions"));
+    sheet.appendChild(el("p","sub","The same map read at different moments of the campaign. Points keep their name, description and characters across all of them — only where they stand can differ. A new session starts out looking exactly like the one before it; move a point and the move belongs to that session onwards. With fewer than two sessions the finished map shows no switch at all."));
+    var slist = el("div");
+    function paintSessions(){
+      slist.innerHTML="";
+      S.sessions.forEach(function(s, i){
+        var row = el("div","reg-row");
+        var moves = S.pois.filter(function(p){ return p.at && p.at[s.id]; }).length;
+        var nm = input(s.label, function(v){ s.label=v; renderSessions(); persist(); });
+        var tag = el("span","tag", moves ? moves+(moves===1?" move":" moves") : "nothing moved");
+        var open = el("button","mini","Edit");
+        open.onclick=function(){ goSession(i); close(); };
+        var rm = el("button","mini del","×");
+        rm.onclick=function(){
+          var gone=S.sessions[i].id;
+          S.sessions.splice(i,1);
+          // the moves recorded for it would point at nothing, so they go with it
+          S.pois.forEach(function(p){ if(p.at){ delete p.at[gone]; } });
+          paintSessions(); renderAll(); persist();
+        };
+        row.appendChild(nm); row.appendChild(tag); row.appendChild(open); row.appendChild(rm);
+        slist.appendChild(row);
+      });
+      var add = el("button","addbtn", S.sessions.length ? "Add session" : "Start a timeline");
+      add.onclick=function(){
+        S.sessions.push(newSession("Session "+(S.sessions.length+1)));
+        curSession = S.sessions.length-1;
+        paintSessions(); renderAll(); persist();
+      };
+      slist.appendChild(add);
+    }
+    paintSessions();
+    sheet.appendChild(slist);
+
+    sheet.appendChild(el("h3",null,"Regions and factions"));
+    sheet.appendChild(el("p","sub","The color sets the color of the points on the map. Borders and a big pin are optional — a faction without territory leaves them empty. You can edit them after picking a region on the right."));
+    var list = el("div");
+    function paintFacs(){
+      list.innerHTML="";
+      S.factions.forEach(function(f, i){
+        var row = el("div","reg-row");
+        var col = document.createElement("input"); col.type="color"; col.value=f.color;
+        col.oninput=function(){ f.color=col.value; renderMap(); renderList(); persist(); };
+        var nm = input(f.label, function(v){ f.label=v; renderMap(); renderInspector(); persist(); });
+        var bits = [];
+        if(hasArea(f)) bits.push("area");
+        if(f.anchor) bits.push("big pin");
+        var tag = el("span","tag", bits.length ? bits.join(" · ") : "no territory");
+        var edit = el("button","mini","Edit");
+        edit.onclick=function(){ selectRegion(f.id); close(); renderAll(); };
+        var rm = el("button","mini del","×");
+        rm.onclick=function(){
+          if(S.factions.length<=1) return toast("At least one faction has to stay.");
+          var gone=f.id; S.factions.splice(i,1);
+          S.pois.forEach(function(p){ if(p.factionId===gone) p.factionId=S.factions[0].id; });
+          if(selReg===gone) selectNone();
+          paintFacs(); renderAll(); persist();
+        };
+        row.appendChild(col); row.appendChild(nm); row.appendChild(tag);
+        row.appendChild(edit); row.appendChild(rm);
+        list.appendChild(row);
+      });
+      var add = el("button","addbtn","Add region");
+      add.onclick=function(){ S.factions.push(newRegion("New region","#b4874a")); paintFacs(); persist(); };
+      list.appendChild(add);
+    }
+    paintFacs();
+    sheet.appendChild(list);
+
+    sheet.appendChild(el("h3",null,"Base map"));
+    var mapInfo = el("p","sub", S.map ? ("Currently "+S.map.w+"×"+S.map.h+" px, "+fmtSize(bytesOf(S.map.src))+".") : "No map yet.");
+    sheet.appendChild(mapInfo);
+
+    var fr = el("label","field");
+    fr.style.display="flex"; fr.style.alignItems="center"; fr.style.gap="8px";
+    var frcb=document.createElement("input"); frcb.type="checkbox"; frcb.checked=S.frame!==false;
+    frcb.onchange=function(){ S.frame=frcb.checked; renderMap(); persist(); };
+    fr.appendChild(frcb);
+    fr.appendChild(document.createTextNode("Engrave a border onto the map"));
+    sheet.appendChild(fr);
+    sheet.appendChild(el("p","sub","Two ruled lines and a lozenge at each corner, so a plain image does not end like a photograph. Turn it off if your map already has a border painted on it."));
+    var rep = el("button","tbtn","Replace map image");
+    rep.onclick=function(){
+      pickFile("image/*").then(function(f){
+        if(!f) return;
+        return readImage(f, 2600, .84).then(function(r){
+          S.map=r; fitView(); renderMap(); persist();
+          mapInfo.textContent = "Currently "+r.w+"×"+r.h+" px, "+fmtSize(bytesOf(r.src))+".";
+          toast("Map replaced. The points kept their relative places.");
+        });
+      }).catch(function(e){ toast(e.message); });
+    };
+    sheet.appendChild(rep);
+
+    var acts = el("div","sheet-actions");
+    var reset = el("button","mini del","Start over");
+    reset.onclick=function(){
+      if(!confirm("Delete the whole project and start with an empty map?")) return;
+      S = blank(); selectNone(); setMode(null); close(); renderAll(); persist();
+    };
+    var ok = el("button","tbtn primary","Done"); ok.onclick=close;
+    acts.appendChild(reset); acts.appendChild(ok);
+    sheet.appendChild(acts);
+  });
+};
+
+/* ============================ project: save / open ============================ */
+function download(filename, text, mime){
+  var blob = new Blob([text], {type: mime || "text/plain;charset=utf-8"});
+  return saveBlob(filename, blob, text);
+}
+function saveBlob(filename, blob, text){
+  // 1) the claude.ai runtime, when it is available
+  var tryRuntime = (window.claude && typeof window.claude.use === "function")
+    ? window.claude.use("downloads").catch(function(){ return null; })
+    : Promise.resolve(null);
+  return tryRuntime.then(function(dl){
+    if(dl && typeof dl.save === "function"){
+      return dl.save({filename:filename, data:text != null ? text : blob}).then(function(){ return "runtime"; });
+    }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    return "anchor";
+  });
+}
+
+document.getElementById("btnSave").onclick = function(){
+  var name = (S.title||"atlas").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "atlas";
+  download(name+".atlas.json", JSON.stringify(S), "application/json")
+    .then(function(){ toast("Project saved."); })
+    .catch(function(){ toast("Saving failed."); });
+};
+// A saved project is plain JSON. An exported map is an HTML file with the project packed
+// into it, so a finished map can be brought back here and worked on further.
+function projectFromHtml(text){
+  // the scripts of a parsed document never run, so reading a file from elsewhere is safe
+  var doc = new DOMParser().parseFromString(text, "text/html");
+  var tag = doc.getElementById("atlas-project");
+  if(tag) return JSON.parse(tag.textContent);
+  // maps exported before the project was packed in still carry everything they show
+  var old = text.match(/var DATA = (\{[\s\S]*?\});\s*[\r\n]+var ICONS/);
+  if(old) return JSON.parse(old[1]);
+  throw new Error("no project inside");
+}
+function readProject(text){
+  var t = String(text).replace(/^\uFEFF/,"").replace(/^\s+/,"");
+  return t.charAt(0) === "{" ? JSON.parse(t) : projectFromHtml(t);
+}
+document.getElementById("btnLoad").onclick = function(){
+  pickFile("application/json,text/html,.json,.html,.htm").then(function(f){
+    if(!f) return;
+    var fr = new FileReader();
+    fr.onload = function(){
+      try{
+        var data = readProject(fr.result);
+        if(!data || !Array.isArray(data.pois)) throw new Error("bad");
+        S = normalize(data); selectNone(); setMode(null);
+        renderAll(); fitView(); persist();
+        toast("Project loaded.");
+      }catch(e){ toast("No Atlas project in that file."); }
+    };
+    fr.readAsText(f);
+  });
+};
+function normChar(c){
+  return {id:c.id||uid(), name:c.name||"", role:c.role||"", description:c.description||"", image:c.image||null};
+}
+function normalize(d){
+  var b = blank();
+  b.title = d.title || b.title;
+  b.subtitle = d.subtitle || "";
+  b.intro = d.intro || "";
+  b.map = d.map || null;
+  b.frame = d.frame !== false;      // projects from before the frame existed get one
+  b.titleImage = d.titleImage || null;
+  // older projects have factions without territory — fill in empty fields, not invented ones
+  if(d.factions && d.factions.length){
+    b.factions = d.factions.map(function(f){
+      return {
+        id:f.id||uid(), label:f.label||"Region", color:f.color||"#4e8f7e",
+        area:(f.area && f.area.length>2) ? f.area.map(function(pt){ return [+pt[0]||0, +pt[1]||0]; }) : null,
+        anchor:f.anchor ? {x:+f.anchor.x||0, y:+f.anchor.y||0} : null,
+        summary:f.summary||"", description:f.description||"", image:f.image||null,
+        characters:(f.characters||[]).map(normChar)
+      };
+    });
+  }
+  b.sessions = (d.sessions||[]).map(function(s,i){
+    return {id:s.id||uid(), label:s.label||("Session "+(i+1))};
+  });
+  var known = {};
+  b.sessions.forEach(function(s){ known[s.id]=1; });
+  b.pois = (d.pois||[]).map(function(p){
+    // a move belonging to a session that is gone would be dead weight, so it is dropped
+    var at = null;
+    if(p.at) for(var k in p.at){
+      if(known[k] && p.at[k]){ (at = at || {})[k] = {x:+p.at[k].x||0, y:+p.at[k].y||0}; }
+    }
+    return {
+      id:p.id||uid(), name:p.name||"", type:normType(p.type),
+      factionId:p.factionId || b.factions[0].id,
+      x:+p.x||0, y:+p.y||0, hidden:!!p.hidden, at:at,
+      summary:p.summary||"", description:p.description||"",
+      // a point used to hold a single `image`; it becomes the first of its pictures
+      images:(p.images && p.images.length) ? p.images.filter(Boolean) : (p.image ? [p.image] : []),
+      characters:(p.characters||[]).map(normChar)
+    };
+  });
+  return b;
+}
+
+/* ============================ map upload ============================ */
+function loadMapFile(f){
+  readImage(f, 2600, .84).then(function(r){
+    S.map = r;
+    renderMap(); fitView(); persist();
+    toast("Map loaded. Now add the first point.");
+  }).catch(function(e){ toast(e.message); });
+}
+document.getElementById("btnPickMap").onclick = function(){
+  pickFile("image/*").then(function(f){ if(f) loadMapFile(f); });
+};
+var dz = document.getElementById("dropzone");
+["dragenter","dragover"].forEach(function(ev){
+  dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.add("hot"); });
+});
+["dragleave","drop"].forEach(function(ev){
+  dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.remove("hot"); });
+});
+dz.addEventListener("drop", function(e){
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) loadMapFile(f);
+});
+
+/* ============================ buttons ============================ */
+document.getElementById("btnAddPoi").onclick = function(){
+  if(!S.map) return toast("Upload a map image first.");
+  setMode(mode==="poi" ? null : "poi");
+  renderMap();
+};
+document.getElementById("zIn").onclick = function(){
+  var r=vp.getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1.25);
+};
+document.getElementById("zOut").onclick = function(){
+  var r=vp.getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1/1.25);
+};
+document.getElementById("zFit").onclick = fitView;
+window.addEventListener("resize", function(){ if(S && S.map) applyView(); });
+
+/* ============================ finished site template ============================ */
+var VIEWER = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=5\">\n<title>__TITLE__<\/title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n<link href=\"https://fonts.googleapis.com/css2?family=Eczar:wght@500;600;700&family=Vollkorn:ital,wght@0,400;0,500;0,600;1,400&display=swap\" rel=\"stylesheet\">\n<style>\n:root{\n  --ink:#0b1012; --ink-2:#121b1e; --line:rgba(180,135,74,.22); --line-2:rgba(180,135,74,.5);\n  --brass:#b4874a; --brass-lit:#dcae6a;\n  --linen:#ded3ba; --paper:#ddd1b4; --paper-2:#cdbe9b; --paper-ink:#241c11; --paper-mute:#5d5039;\n  --text:#e9e1d1; --muted:#9aa5a4;\n  --display:\"Eczar\",Georgia,serif; --body:\"Vollkorn\",Georgia,serif;\n  --mote-warm:#e8bd72; --mote-cool:#8fd6c4; --cloud:#eef4f0;\n  --frame-line:rgba(198,157,96,.62); --frame-band:rgba(12,17,15,.26);\n  --aura-warm:rgba(220,174,106,.08); --aura-cool:rgba(111,195,178,.10);\n}\n:root:not([data-theme=\"light\"]){ }\n@media (prefers-color-scheme: dark){ :root:not([data-theme=\"light\"]){ } }\n:root[data-theme=\"dark\"]{ }\n*{box-sizing:border-box}\nhtml,body{height:100%;margin:0}\nbody{background:var(--ink);color:var(--text);font-family:var(--body);overflow:hidden;\n  -webkit-font-smoothing:antialiased}\nbutton{font:inherit;color:inherit;cursor:pointer}\n:focus-visible{outline:2px solid var(--brass-lit);outline-offset:2px}\n@media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation:none!important;transition:none!important} }\n\n.hdr{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:16px;\n  padding:11px 18px;background:linear-gradient(rgba(8,12,14,.94),rgba(8,12,14,.72),transparent);\n  pointer-events:none}\n.hdr > *{pointer-events:auto}\n.ttl{font-family:var(--display);font-size:20px;font-weight:600;color:var(--linen);line-height:1.15}\n.ttl small{display:block;font-family:var(--body);font-size:13px;font-weight:400;color:var(--muted);letter-spacing:.01em}\n.hdr .sp{flex:1}\n.legend{display:flex;gap:13px;flex-wrap:wrap;align-items:center}\n.legend span{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}\n.legend i{width:9px;height:9px;border-radius:50%;display:block}\n.ghost{background:transparent;border:1px solid var(--line-2);border-radius:3px;padding:6px 12px;color:var(--linen)}\n.ghost:hover{background:rgba(180,135,74,.14)}\n\n.vp{position:absolute;inset:0;overflow:hidden;cursor:grab;touch-action:none;\n  background:radial-gradient(ellipse at 50% 42%,#15201e,#080c0e 72%)}\n.vp.drag{cursor:grabbing}\n/* magic under the map: a slowly breathing glow and rising motes (canvas #magic); they never reach over the map */\n.vp::before{content:\"\";position:absolute;inset:-25%;pointer-events:none;\n  background:\n    radial-gradient(38% 32% at 28% 62%,var(--aura-cool),transparent 70%),\n    radial-gradient(34% 30% at 74% 34%,var(--aura-warm),transparent 70%);\n  animation:aura 28s ease-in-out infinite alternate}\n@keyframes aura{from{transform:translate(-4%,3%) rotate(-4deg)} to{transform:translate(4%,-3%) rotate(6deg)}}\n.magic{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}\n.cv{position:absolute;top:0;left:0;transform-origin:0 0}\n.cv img.base{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;\n  box-shadow:0 20px 70px rgba(0,0,0,.65)}\n/* clouds sit in the map layer, so they pan and zoom with the terrain and are cut off at its edge */\n.clouds{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;\n  opacity:0;transition:opacity .35s ease}\n/* The point the coordinates mean is the centre of the knob, so that is what the pin is\n   anchored and scaled around. Anchoring it lower — at the foot of the name, say — would\n   leave the knob hanging a fixed number of screen pixels above the spot, which is a\n   different distance on the map at every zoom level: the marker would crawl as you zoom. */\n.pin{position:absolute;--knob:16px;\n  transform:translate(-50%,calc(var(--knob) / -2)) scale(var(--inv,1));\n  transform-origin:50% calc(var(--knob) / 2);\n  display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;padding:0;\n  user-select:none;-webkit-user-select:none;\n  /* switching sessions moves the points, and seeing them travel is the whole point */\n  transition:left .55s cubic-bezier(.22,.7,.3,1),top .55s cubic-bezier(.22,.7,.3,1)}\n.pin .knob{width:var(--knob);height:var(--knob);border-radius:50%;\n  background:var(--pc);border:1.2px solid rgba(0,0,0,.45);display:grid;place-items:center;\n  box-shadow:0 2px 5px rgba(0,0,0,.5);transition:box-shadow .18s}\n.pin .knob svg{width:9.5px;height:9.5px;color:#0b1012}\n/* a city outranks a hamlet or a lone traveller, so it is given a larger mark */\n.pin[data-type=\"city\"]{--knob:21px}\n.pin[data-type=\"city\"] .knob svg{width:12.5px;height:12.5px}\n/* The name is set straight onto the land: white letters with a dark outline read over\n   forest and sea alike, and nothing boxes in the map underneath. */\n.pin .lbl{font-family:var(--display);font-size:12.5px;font-weight:600;color:#fff;\n  white-space:nowrap;-webkit-text-stroke:2.5px rgba(0,0,0,.92);paint-order:stroke fill;\n  text-shadow:0 1px 2px rgba(0,0,0,.5)}\n.pin:hover .knob,.pin[aria-current=\"true\"] .knob{box-shadow:0 0 0 2.5px var(--brass-lit),0 2px 6px rgba(0,0,0,.55)}\n/* A region is lettered, not pinned: just its name, centred on the anchor and set wide in\n   capitals the way a province is written across a map. Its colour survives as a faint glow\n   behind the letters, since there is no knob left to carry it. */\n.pin.big{transform:translate(-50%,-50%) scale(var(--inv,1));transform-origin:50% 50%}\n.pin.big .lbl{font-size:14.5px;letter-spacing:.14em;text-transform:uppercase;\n  -webkit-text-stroke-width:3px;text-shadow:0 0 14px var(--pc),0 1px 2px rgba(0,0,0,.5);\n  transition:color .18s}\n.pin.big:hover .lbl,.pin.big[data-hot=\"1\"] .lbl,.pin.big[aria-current=\"true\"] .lbl{color:var(--brass-lit)}\n\n/* A neatline for map images that bring no border of their own: two engraved rules with a\n   tinted margin between them and a lozenge at the corners and at the middle of each side.\n   It is drawn in map units, so it belongs to the sheet and zooms with it. */\n.frame{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}\n.frame .band{fill:var(--frame-band)}\n.frame .rule{fill:none;stroke:var(--frame-line)}\n.frame .orn{fill:var(--frame-line)}\n\n/* Title artwork hangs in the open space above the sheet: part of the map layer, so it moves\n   and zooms with it, but always clear of it. sizeTitle() fits it to that space and apply()\n   fades it out once moving in pushes it up under the header. */\n.title-art{position:absolute;left:50%;bottom:102.5%;transform:translateX(-50%);\n  height:13%;max-width:70%;object-fit:contain;pointer-events:none;   /* sizeTitle() refines these */\n  user-select:none;-webkit-user-drag:none;opacity:0;transition:opacity .35s ease;\n  filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}\n\n/* region areas: invisible, they exist only so the map knows which region you are over */\n.areas{position:absolute;top:0;left:0;overflow:visible}\n.areas polygon{fill:transparent;stroke:none;pointer-events:fill}\n\n/* what the cursor is over right now */\n.rgn{position:fixed;left:16px;bottom:16px;z-index:20;display:flex;align-items:center;gap:9px;\n  padding:7px 14px;background:rgba(8,12,14,.88);border:1px solid var(--line-2);border-radius:3px;\n  font-family:var(--display);font-size:13.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;\n  color:var(--linen);pointer-events:none;opacity:0;transition:opacity .18s}\n.rgn.on{opacity:1}\n.rgn i{width:9px;height:9px;border-radius:50%;display:block;flex:0 0 auto}\n\n/* the moment of the campaign being read; only there when the atlas has more than one */\n.sess{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:20;\n  display:flex;align-items:center;gap:2px;max-width:min(420px,calc(100% - 150px));\n  background:rgba(8,12,14,.88);border:1px solid var(--line-2);border-radius:3px;padding:3px 4px}\n.sess button{width:30px;height:30px;background:none;border:none;border-radius:2px;\n  color:var(--linen);font-size:17px;line-height:1}\n.sess button:hover:not(:disabled){background:rgba(180,135,74,.16)}\n.sess button:disabled{opacity:.25;cursor:default}\n.sess-body{min-width:0;padding:0 6px;text-align:center}\n.sess-name{display:block;font-family:var(--display);font-size:13.5px;font-weight:600;color:var(--linen);\n  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.sess-count{display:block;font-size:11px;color:var(--muted);letter-spacing:.06em}\n\n.zoom{position:fixed;right:16px;bottom:16px;z-index:20;display:flex;flex-direction:column;gap:5px}\n.zoom button{width:36px;height:36px;background:rgba(8,12,14,.88);border:1px solid var(--line-2);\n  border-radius:3px;color:var(--linen);font-size:18px;line-height:1}\n.zoom button:hover{background:#1b262b}\n\n/* ---------- parchment panel ---------- */\n.sheet{position:fixed;top:0;right:0;bottom:0;width:min(430px,100%);z-index:30;display:flex;flex-direction:column;\n  background:\n    radial-gradient(120% 90% at 8% 0%,rgba(255,250,235,.55),transparent 60%),\n    radial-gradient(100% 80% at 100% 100%,rgba(120,92,48,.30),transparent 62%),\n    linear-gradient(var(--paper),var(--paper-2));\n  color:var(--paper-ink);border-left:1px solid rgba(60,44,20,.5);\n  box-shadow:-18px 0 50px rgba(0,0,0,.5);\n  transform:translateX(100%);transition:transform .28s cubic-bezier(.22,.7,.3,1)}\n.sheet.open{transform:none}\n.sheet::before{content:\"\";position:absolute;inset:0;pointer-events:none;opacity:.35;mix-blend-mode:multiply;\n  background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E\")}\n.sheet > *{position:relative}\n.sh-head{padding:20px 22px 0;flex:0 0 auto}\n.sh-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border:1px solid rgba(60,44,20,.35);\n  background:rgba(255,250,235,.4);border-radius:2px;color:var(--paper-ink);font-size:16px;line-height:1;z-index:2}\n.sh-close:hover{background:rgba(255,250,235,.8)}\n.sh-kicker{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--paper-mute);margin-bottom:2px}\n.sh-kicker i{width:8px;height:8px;border-radius:50%;display:block}\n.sh-title{font-family:var(--display);font-size:27px;font-weight:600;line-height:1.1;margin:0 34px 4px 0}\n.sh-sum{font-style:italic;color:var(--paper-mute);margin:0;line-height:1.5}\n.sh-tabs{display:flex;gap:18px;margin-top:16px;border-bottom:1px solid rgba(60,44,20,.28)}\n.sh-tabs button{background:none;border:none;padding:0 0 9px;font-family:var(--display);font-weight:600;\n  font-size:15px;color:var(--paper-mute);border-bottom:2px solid transparent;margin-bottom:-1px}\n.sh-tabs button[aria-selected=\"true\"]{color:var(--paper-ink);border-bottom-color:#7a5a24}\n.sh-body{flex:1;overflow-y:auto;padding:18px 22px 26px}\n.sh-body img.area{width:100%;border-radius:2px;border:1px solid rgba(60,44,20,.35);margin-bottom:16px;display:block}\n/* several pictures of a place: a frame shaped by the first, the others shown whole inside it */\n.gal{margin-bottom:16px}\n.gal-win{overflow:hidden;aspect-ratio:3 / 2;border-radius:2px;border:1px solid rgba(60,44,20,.35);\n  background:rgba(60,44,20,.1);touch-action:pan-y}\n.gal-win .track{height:100%}\n.gal-slide{flex:0 0 100%;min-width:0;height:100%}\n.gal-slide img{width:100%;height:100%;object-fit:contain;display:block;user-select:none;-webkit-user-drag:none}\n.gal .car-nav{margin-top:10px}\n.prose p{margin:0 0 .85em;line-height:1.68;max-width:62ch}\n.prose p:last-child{margin-bottom:0}\n.none{color:var(--paper-mute);font-style:italic}\n\n/* ---------- character carousel ---------- */\n.car{position:relative}\n.car-win{overflow:hidden}\n.track{display:flex;transition:transform .3s cubic-bezier(.22,.7,.3,1)}\n.slide{flex:0 0 100%;min-width:0;padding:0 1px}\n.slide img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:2px;\n  border:1px solid rgba(60,44,20,.4);display:block;margin-bottom:12px;filter:saturate(.92)}\n.slide .ph{width:100%;aspect-ratio:3/4;border:1px dashed rgba(60,44,20,.35);border-radius:2px;\n  display:grid;place-items:center;color:var(--paper-mute);margin-bottom:12px;font-style:italic;font-size:13px}\n.slide h4{font-family:var(--display);font-size:21px;font-weight:600;margin:0 0 1px}\n.slide .role{color:var(--paper-mute);font-size:13.5px;margin:0 0 10px}\n.car-nav{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:12px}\n.car-nav button{width:32px;height:32px;border:1px solid rgba(60,44,20,.4);background:rgba(255,250,235,.35);\n  border-radius:2px;font-size:15px;line-height:1}\n.car-nav button:hover:not(:disabled){background:rgba(255,250,235,.8)}\n.car-nav button:disabled{opacity:.3;cursor:default}\n.dots{display:flex;gap:6px;justify-content:center;flex:1}\n.dots button{width:7px;height:7px;padding:0;border-radius:50%;border:none;background:rgba(60,44,20,.3)}\n.dots button[aria-current=\"true\"]{background:#7a5a24;transform:scale(1.4)}\n\n.about{position:fixed;inset:0;z-index:40;background:rgba(6,10,11,.76);display:grid;place-items:center;padding:24px}\n.about .box{background:linear-gradient(var(--paper),var(--paper-2));color:var(--paper-ink);\n  max-width:520px;padding:26px;border-radius:3px;box-shadow:0 30px 80px rgba(0,0,0,.6)}\n.about h3{font-family:var(--display);font-size:24px;margin:0 0 10px}\n\n@media (max-width:760px){\n  /* dvh, because on a phone the browser bar slides away and vh does not follow */\n  .sheet{top:auto;left:0;width:100%;height:80vh;height:80dvh;border-left:none;border-top:1px solid rgba(60,44,20,.5);\n    border-radius:6px 6px 0 0;transform:translateY(100%);box-shadow:0 -18px 50px rgba(0,0,0,.5)}\n  .sheet.open{transform:none}\n  .sh-head{padding:16px 18px 0}\n  .sh-title{font-size:24px}\n  .sh-body{padding:16px 18px calc(26px + env(safe-area-inset-bottom, 0px))}\n  .legend{display:none}\n  .ttl{font-size:17px}\n  .hdr{padding:9px 14px;gap:10px}\n  .ghost{padding:8px 12px;font-size:14px}\n  /* the whole map is small on a phone, so its markers have to come down with it,\n     or the labels cover the land they are pointing at */\n  .pin{--knob:13px}\n  .pin[data-type=\"city\"]{--knob:17px}\n  .pin .knob{border-width:1px}\n  .pin .knob svg{width:8px;height:8px}\n  .pin[data-type=\"city\"] .knob svg{width:10px;height:10px}\n  .pin .lbl{font-size:11px;-webkit-text-stroke-width:2.5px}\n  .pin.big .lbl{font-size:12.5px;letter-spacing:.1em;-webkit-text-stroke-width:2.5px}\n}\n/* Touch targets go by the input, not by the width: a phone held sideways is wider than the\n   breakpoint but the finger is the same size. */\n@media (pointer:coarse){\n  .zoom{right:12px;bottom:calc(14px + env(safe-area-inset-bottom, 0px));gap:8px}\n  .zoom button{width:44px;height:44px;font-size:20px}\n  .sh-close{width:38px;height:38px;font-size:18px}\n  .car-nav button{width:40px;height:40px}\n  .dots button{width:9px;height:9px}\n  .ghost{padding:9px 13px}\n}\n<\/style>\n<\/head>\n<body>\n<header class=\"hdr\">\n  <div class=\"ttl\">__TITLE__<small>__SUBTITLE__<\/small><\/div>\n  <div class=\"sp\"><\/div>\n  <div class=\"legend\" id=\"legend\"><\/div>\n  <button class=\"ghost\" id=\"aboutBtn\" hidden>About this atlas<\/button>\n<\/header>\n\n<div class=\"vp\" id=\"vp\"><canvas class=\"magic\" id=\"magic\" aria-hidden=\"true\"><\/canvas><div class=\"cv\" id=\"cv\"><\/div><\/div>\n\n<div class=\"zoom\">\n  <button id=\"zi\" aria-label=\"Zoom in\">+<\/button>\n  <button id=\"zo\" aria-label=\"Zoom out\">&#8722;<\/button>\n  <button id=\"zf\" aria-label=\"Fit the whole map\" style=\"font-size:11px\">fit<\/button>\n<\/div>\n\n<div class=\"rgn\" id=\"rgn\" aria-hidden=\"true\"><i><\/i><span><\/span><\/div>\n\n<nav class=\"sess\" id=\"sess\" hidden aria-label=\"Sessions\">\n  <button id=\"sessPrev\" aria-label=\"Earlier session\">‹<\/button>\n  <span class=\"sess-body\"><span class=\"sess-name\" id=\"sessName\"><\/span><span class=\"sess-count\" id=\"sessCount\"><\/span><\/span>\n  <button id=\"sessNext\" aria-label=\"Later session\">›<\/button>\n<\/nav>\n\n<aside class=\"sheet\" id=\"sheet\" aria-hidden=\"true\">\n  <button class=\"sh-close\" id=\"shClose\" aria-label=\"Close\">&#215;<\/button>\n  <div class=\"sh-head\">\n    <div class=\"sh-kicker\" id=\"shKicker\"><\/div>\n    <h2 class=\"sh-title\" id=\"shTitle\"><\/h2>\n    <p class=\"sh-sum\" id=\"shSum\"><\/p>\n    <div class=\"sh-tabs\" role=\"tablist\">\n      <button id=\"tabArea\" role=\"tab\" aria-selected=\"true\">Area<\/button>\n      <button id=\"tabChars\" role=\"tab\" aria-selected=\"false\">Characters<\/button>\n    <\/div>\n  <\/div>\n  <div class=\"sh-body\" id=\"shBody\"><\/div>\n<\/aside>\n\n<script type=\"application/json\" id=\"atlas-project\">__DATA__<\/script>\n<script>\nvar ICONS = __ICONS__;\nvar TYPES = __TYPES__;\n\n/* The whole project is packed into the file, so the editor can open the finished map again.\n   The map itself shows only part of it: a hidden point, and a region that was never given a\n   big pin, have nowhere to appear. */\nvar PROJECT = JSON.parse(document.getElementById('atlas-project').textContent);\nvar DATA = published(PROJECT);\n// the reader starts in the latest session: the world as it stands now\nvar SESSION = Math.max(0, DATA.sessions.length-1);\nfunction published(p){\n  return {\n    title:p.title, subtitle:p.subtitle, intro:p.intro, map:p.map,\n    sessions:p.sessions||[],\n    frame:p.frame!==false,\n    titleImage:p.titleImage||null,\n    factions:(p.factions||[]).map(function(f){\n      var pinned = !!f.anchor;\n      return {id:f.id, label:f.label, color:f.color,\n        area:(f.area&&f.area.length>2)?f.area:null, anchor:f.anchor||null,\n        summary:pinned?f.summary:'', description:pinned?f.description:'',\n        image:pinned?f.image:null, characters:[]};\n    }),\n    pois:(p.pois||[]).filter(function(q){ return !q.hidden; })\n  };\n}\n\nfunction ic(t){\n  return '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">'+(ICONS[t]||ICONS.place)+'<\\/svg>';\n}\nfunction fac(p){\n  for(var i=0;i<DATA.factions.length;i++) if(DATA.factions[i].id===p.factionId) return DATA.factions[i];\n  return null;\n}\nfunction col(p){ var f=fac(p); return f?f.color:'#8a8f8c'; }\nfunction rgba(hex,a){\n  var h=hex.replace('#','');\n  if(h.length===3) h=h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2);\n  var n=parseInt(h,16);\n  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';\n}\n\n/* --- map --- */\nvar vp=document.getElementById('vp'), cv=document.getElementById('cv');\nvar V={z:1,x:0,y:0};\n// keep the map inside the viewport: panning stops at the image edges, and an axis\n// that is smaller than the viewport stays centred\nfunction clamp(){\n  if(!DATA.map) return;\n  var r=vp.getBoundingClientRect(), w=DATA.map.w*V.z, h=DATA.map.h*V.z;\n  V.x = w<=r.width  ? (r.width-w)/2  : Math.min(0,Math.max(r.width-w, V.x));\n  V.y = h<=r.height ? (r.height-h)/2 : Math.min(0,Math.max(r.height-h,V.y));\n}\nfunction apply(){\n  clamp();\n  cv.style.transform='translate('+V.x+'px,'+V.y+'px) scale('+V.z+')';\n  cv.style.setProperty('--inv',1/V.z);\n  // how far the view has zoomed past the overview: 1 = whole map on screen\n  var t=V.z/fitZoom();\n  if(clouds) clouds.zoom(t);\n  // The title artwork lives in the open space above the sheet. It shows while it hangs in\n  // clear air and fades as moving in pushes it up under the header and off the screen.\n  var art=cv.querySelector('.title-art');\n  if(art && !art.hidden){\n    var clear=art.getBoundingClientRect().top-vp.getBoundingClientRect().top-headerBottom();\n    art.style.opacity=Math.max(0,Math.min(1,1+clear/24));\n  }\n}\n// the zoom level at which the whole map fits the viewport -- also the zoom-out floor\n// How much further than \"the whole map\" the reader may pull back. A map cut to the shape of\n// the screen would otherwise sit edge to edge and the void it floats in would never show.\nvar PULL_BACK = .7;\nfunction fitZoom(){\n  if(!DATA.map) return .05;\n  var r=vp.getBoundingClientRect();\n  // a fixed margin eats a phone screen, so the breathing room scales with the screen\n  var pad=Math.min(48, r.width*.07, r.height*.07);\n  return Math.min((r.width-pad)/DATA.map.w,(r.height-pad)/DATA.map.h);\n}\n/* The title artwork is sized for the open band between the header and the top of the map\n   as it stands when fully pulled back — that band, not the map, is what it has to fit into,\n   and it differs a lot between a wide monitor and a phone held upright. It is drawn in map\n   units, so the size is worked out for that zoom level and then simply zooms along. */\nfunction headerBottom(){ return document.querySelector('.hdr').getBoundingClientRect().bottom-vp.getBoundingClientRect().top; }\n// clear air between the header and the top of the map at zoom z, in screen pixels\nfunction titleRoom(z){\n  var r=vp.getBoundingClientRect();\n  return (r.height-DATA.map.h*z)/2 - headerBottom() - 8;\n}\n// Open on the whole map when the title already has room above it there — a phone held\n// upright usually does — and pull back only when it has not, as on a wide monitor.\nfunction startZoom(){\n  if(!DATA.titleImage) return fitZoom();\n  return titleRoom(fitZoom())>=60 ? fitZoom() : fitZoom()*PULL_BACK;\n}\nfunction sizeTitle(z){\n  var art=cv.querySelector('.title-art');\n  if(!art||!DATA.map) return;\n  var r=vp.getBoundingClientRect(), room=titleRoom(z);\n  art.hidden = room<28;                     // no clear air to hang it in: better not at all\n  if(art.hidden) return;\n  var h=Math.min(room*.86, 150);\n  art.style.height=(h/z)+'px';\n  art.style.maxWidth=(Math.min(r.width*.9, DATA.map.w*z*1.15)/z)+'px';\n  art.style.bottom='calc(100% + '+(Math.max(6,(room-h)/2)/z)+'px)';\n}\nwindow.addEventListener('resize',function(){ sizeTitle(startZoom()); apply(); });\nfunction fit(){ showAt(fitZoom()); }\nfunction showAt(z){\n  if(!DATA.map) return;\n  var r=vp.getBoundingClientRect();\n  V.z=z; V.x=(r.width-DATA.map.w*z)/2; V.y=(r.height-DATA.map.h*z)/2; apply();\n}\nfunction zoomAt(cx,cy,f){\n  var r=vp.getBoundingClientRect(), px=cx-r.left, py=cy-r.top;\n  var nz=Math.max(fitZoom()*PULL_BACK,Math.min(12,V.z*f)), k=nz/V.z;\n  V.x=px-(px-V.x)*k; V.y=py-(py-V.y)*k; V.z=nz; apply();\n}\nvp.addEventListener('wheel',function(e){ e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.15:1/1.15); },{passive:false});\nvar pan=null, pts={}, pinch=null;\n// where a lone press began, so that a click on the map can be told from the end of a drag\nvar tap=null;\nfunction down(){ var a=[],k; for(k in pts) a.push(pts[k]); return a; }\nfunction span(a){ var dx=a[0].x-a[1].x, dy=a[0].y-a[1].y; return Math.sqrt(dx*dx+dy*dy)||1; }\nfunction middle(a){ return {x:(a[0].x+a[1].x)/2, y:(a[0].y+a[1].y)/2}; }\nfunction grabFrom(p,id){ pan={id:id,sx:p.x,sy:p.y,ox:V.x,oy:V.y}; vp.classList.add('drag'); }\n\nvp.addEventListener('pointerdown',function(e){\n  // Every finger counts towards a pinch, including one that landed on a pin — on a small\n  // map that happens all the time. Only the panning is kept off the pins, so that a tap\n  // on one still opens its panel instead of dragging the map.\n  var onPin = !!e.target.closest('.pin');\n  if(!down().length) tap={x:e.clientX, y:e.clientY, moved:false};\n  pts[e.pointerId]={x:e.clientX,y:e.clientY,id:e.pointerId};\n  var a=down();\n  if(a.length>=2){\n    pan=null; pinch={d:span(a), m:middle(a)}; vp.classList.remove('drag');\n    if(tap) tap.moved=true;   // a pinch is never a click\n    return;\n  }\n  if(onPin) return;\n  vp.setPointerCapture(e.pointerId);\n  grabFrom(pts[e.pointerId], e.pointerId);\n});\nvp.addEventListener('pointermove',function(e){\n  var p=pts[e.pointerId];\n  if(!p) return;\n  p.x=e.clientX; p.y=e.clientY;\n  if(tap && !tap.moved && Math.abs(e.clientX-tap.x)+Math.abs(e.clientY-tap.y)>6) tap.moved=true;\n  var a=down();\n  if(pinch && a.length>=2){\n    // the map follows the fingers: it scales about the point between them and travels with it\n    var d=span(a), m=middle(a);\n    zoomAt(m.x, m.y, d/pinch.d);\n    V.x+=m.x-pinch.m.x; V.y+=m.y-pinch.m.y; apply();\n    pinch.d=d; pinch.m=m;\n    return;\n  }\n  if(!pan||e.pointerId!==pan.id) return;\n  V.x=pan.ox+(e.clientX-pan.sx); V.y=pan.oy+(e.clientY-pan.sy); apply();\n  // re-base on the clamped position, so dragging back from an edge responds at once\n  pan.sx=e.clientX; pan.sy=e.clientY; pan.ox=V.x; pan.oy=V.y;\n});\nfunction endPan(e){\n  delete pts[e.pointerId];\n  var a=down();\n  if(pinch){\n    if(a.length>=2){ pinch={d:span(a), m:middle(a)}; return; }\n    pinch=null;\n    // a finger is still down: it takes over the panning, or the map jumps on its next move\n    if(a.length===1) grabFrom(a[0], a[0].id);\n    else vp.classList.remove('drag');\n    return;\n  }\n  if(pan&&e.pointerId===pan.id){ pan=null; vp.classList.remove('drag'); }\n}\nvp.addEventListener('pointerup',endPan); vp.addEventListener('pointercancel',endPan);\n// A click on the bare map puts the panel away. Not the end of a drag or a pinch, though, and\n// not a click on a pin — that one opens a place of its own.\nvp.addEventListener('click',function(e){\n  if(e.target.closest('.pin') || (tap && tap.moved)) return;\n  if(sheet.classList.contains('open')) closeSheet();\n});\ndocument.getElementById('zi').onclick=function(){var r=vp.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1.3)};\ndocument.getElementById('zo').onclick=function(){var r=vp.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1/1.3)};\ndocument.getElementById('zf').onclick=fit;\nwindow.addEventListener('resize',apply);\n\n/* A region reaches the panel as an ordinary place, only flagged with isRegion.\n   Characters belong to places; a region is described, not peopled. */\nfunction regionPlace(f){\n  return {id:'reg-'+f.id, name:f.label, isRegion:true, factionId:f.id,\n    x:f.anchor.x, y:f.anchor.y, summary:f.summary||'', description:f.description||'',\n    image:f.image||null, characters:[]};\n}\nfunction hasArea(f){ return !!(f.area && f.area.length>2); }\n\n/* Where a point stands in the session being read: the last session up to this one that\n   moved it, and failing that the point's own coordinates. Regions never move. */\nfunction posAt(p, upto){\n  var x=p.x, y=p.y;\n  for(var i=0; i<=upto && i<DATA.sessions.length; i++){\n    var a=p.at && p.at[DATA.sessions[i].id];\n    if(a){ x=a.x; y=a.y; }\n  }\n  return {x:x, y:y};\n}\nfunction pinEl(p, big){\n  var b=document.createElement('button');\n  var at=big ? {x:p.x,y:p.y} : posAt(p, SESSION);\n  b.className='pin'+(big?' big':''); b.dataset.id=p.id;\n  if(!big) b.dataset.type=p.type;\n  b.style.left=(at.x*100)+'%'; b.style.top=(at.y*100)+'%';\n  b.style.setProperty('--pc',col(p));\n  // a region is only its lettering; everything else carries a knob with its icon\n  b.innerHTML=(big?'':'<span class=\"knob\">'+ic(p.type)+'<\\/span>')+'<span class=\"lbl\"><\\/span>';\n  b.querySelector('.lbl').textContent=p.name;\n  b.setAttribute('aria-label',p.name+', '+(big?'region':(TYPES[p.type]||'')));\n  b.onclick=function(){ openPlace(p); };\n  return b;\n}\n/* The frame is engraved onto the sheet rather than hung around it, so it never changes where\n   a point sits: everything is in map units and the points keep their own coordinates. */\nfunction frameHtml(w,h){\n  var u=Math.min(w,h), pad=u*.013, band=u*.021, sw=Math.max(.8,u*.0016);\n  var x0=pad+band, y0=pad+band, x1=w-pad-band, y1=h-pad-band;\n  function f(n){ return Math.round(n*10)/10; }\n  function rect(x,y,rw,rh){ return 'M'+f(x)+' '+f(y)+'h'+f(rw)+'v'+f(rh)+'h'+f(-rw)+'Z'; }\n  function loz(cx,cy,r){\n    return 'M'+f(cx)+' '+f(cy-r)+'L'+f(cx+r)+' '+f(cy)+'L'+f(cx)+' '+f(cy+r)+'L'+f(cx-r)+' '+f(cy)+'Z';\n  }\n  var outer=rect(pad,pad,w-2*pad,h-2*pad), inner=rect(x0,y0,x1-x0,y1-y0);\n  var mx=(x0+x1)/2, my=(y0+y1)/2, big=band*.62, small=band*.3;\n  var orn=loz(x0,y0,big)+loz(x1,y0,big)+loz(x1,y1,big)+loz(x0,y1,big)\n         +loz(mx,y0,small)+loz(mx,y1,small)+loz(x0,my,small)+loz(x1,my,small);\n  return '<svg class=\"frame\" viewBox=\"0 0 '+w+' '+h+'\" aria-hidden=\"true\"'\n    +' style=\"box-shadow:inset 0 0 '+Math.round(u*.045)+'px rgba(6,10,11,.5)\">'\n    +'<path class=\"band\" fill-rule=\"evenodd\" d=\"'+outer+inner+'\"/>'\n    +'<path class=\"rule\" stroke-width=\"'+f(sw*1.8)+'\" d=\"'+outer+'\"/>'\n    +'<path class=\"rule\" stroke-width=\"'+f(sw)+'\" d=\"'+inner+'\"/>'\n    +'<path class=\"orn\" d=\"'+orn+'\"/><\/svg>';\n}\nfunction drawAreas(){\n  var list=DATA.factions.filter(hasArea);\n  if(!list.length) return;\n  var NS='http://www.w3.org/2000/svg';\n  var svg=document.createElementNS(NS,'svg');\n  svg.setAttribute('class','areas');\n  svg.setAttribute('width',DATA.map.w); svg.setAttribute('height',DATA.map.h);\n  svg.setAttribute('viewBox','0 0 '+DATA.map.w+' '+DATA.map.h);\n  list.forEach(function(f){\n    var pg=document.createElementNS(NS,'polygon');\n    pg.setAttribute('points', f.area.map(function(pt){\n      return (pt[0]*DATA.map.w).toFixed(1)+','+(pt[1]*DATA.map.h).toFixed(1);\n    }).join(' '));\n    pg.addEventListener('pointerenter',function(e){ showRegion(f, e.pointerType!=='mouse'); });\n    pg.addEventListener('pointerleave',function(){ hideRegion(f); });\n    svg.appendChild(pg);\n  });\n  cv.appendChild(svg);\n}\nfunction drawMap(){\n  cv.innerHTML='';\n  if(!DATA.map) return;\n  cv.style.width=DATA.map.w+'px';\n  var im=new Image(); im.className='base'; im.src=DATA.map.src; im.alt=DATA.title;\n  cv.appendChild(im);\n  drawAreas();\n  if(DATA.frame) cv.insertAdjacentHTML('beforeend', frameHtml(DATA.map.w, DATA.map.h));\n  if(DATA.titleImage){\n    var art=new Image(); art.className='title-art'; art.src=DATA.titleImage; art.alt=DATA.title;\n    cv.appendChild(art);\n  }\n  clouds.mount(cv);\n  DATA.factions.forEach(function(f){ if(f.anchor) cv.appendChild(pinEl(regionPlace(f), true)); });\n  DATA.pois.forEach(function(p){ cv.appendChild(pinEl(p, false)); });\n}\n\n/* --- name of the region under the cursor --- */\nvar rgn=document.getElementById('rgn'), rgnId=null, rgnTimer=null;\nfunction regionPin(id){ return cv.querySelector('.pin.big[data-id=\"reg-'+id+'\"]'); }\nfunction showRegion(f, temporary){\n  clearTimeout(rgnTimer);\n  rgnId=f.id;\n  rgn.querySelector('i').style.background=f.color;\n  rgn.querySelector('span').textContent=f.label;\n  rgn.classList.add('on');\n  var pin=regionPin(f.id); if(pin) pin.setAttribute('data-hot','1');\n  // touch has no hover, so the label disappears on its own after a while\n  if(temporary) rgnTimer=setTimeout(function(){ hideRegion(f); }, 2400);\n}\nfunction hideRegion(f){\n  if(rgnId!==f.id) return;\n  rgnId=null; rgn.classList.remove('on');\n  var pin=regionPin(f.id); if(pin) pin.removeAttribute('data-hot');\n}\nfunction markCurrent(id){\n  var all=cv.querySelectorAll('.pin');\n  for(var i=0;i<all.length;i++) all[i].setAttribute('aria-current', all[i].dataset.id===id?'true':'false');\n}\n\n/* --- panel --- */\nvar sheet=document.getElementById('sheet'), body=document.getElementById('shBody');\nvar tabA=document.getElementById('tabArea'), tabC=document.getElementById('tabChars');\nvar cur=null, curTab='area', ci=0;\n\nfunction prose(txt){\n  var wrap=document.createElement('div'); wrap.className='prose';\n  var parts=String(txt||'').split(/\\n\\s*\\n/);\n  var any=false;\n  parts.forEach(function(s){\n    s=s.trim(); if(!s) return;\n    any=true;\n    var p=document.createElement('p'); p.textContent=s; wrap.appendChild(p);\n  });\n  if(!any){ var n=document.createElement('p'); n.className='none'; n.textContent='Nothing has been written about this place yet.'; wrap.appendChild(n); }\n  return wrap;\n}\nfunction openPlace(p){\n  cur=p; curTab='area'; ci=0;\n  var f=fac(p);\n  document.getElementById('shKicker').innerHTML='';\n  var k=document.getElementById('shKicker');\n  var dot=document.createElement('i'); dot.style.background=col(p); k.appendChild(dot);\n  k.appendChild(document.createTextNode(p.isRegion ? 'Region' : (TYPES[p.type]||'Place')+(f?' · '+f.label:'')));\n  document.getElementById('shTitle').textContent=p.name;\n  var sum=document.getElementById('shSum');\n  sum.textContent=p.summary||''; sum.style.display=p.summary?'':'none';\n  tabC.textContent = p.characters.length ? 'Characters ('+p.characters.length+')' : 'Characters';\n  tabC.disabled = p.characters.length===0;\n  tabC.style.opacity = p.characters.length===0 ? .4 : 1;\n  // a region has no characters, and a row with a single tab in it would only be clutter\n  tabA.parentNode.style.display = p.isRegion ? 'none' : '';\n  sheet.classList.add('open'); sheet.setAttribute('aria-hidden','false');\n  markCurrent(p.id);\n  paint();\n}\nfunction closeSheet(){\n  sheet.classList.remove('open'); sheet.setAttribute('aria-hidden','true');\n  cur=null; markCurrent('');\n}\ndocument.getElementById('shClose').onclick=closeSheet;\ntabA.onclick=function(){ curTab='area'; paint(); };\ntabC.onclick=function(){ if(cur&&cur.characters.length){ curTab='chars'; paint(); } };\n\nfunction paint(){\n  tabA.setAttribute('aria-selected', curTab==='area'?'true':'false');\n  tabC.setAttribute('aria-selected', curTab==='chars'?'true':'false');\n  body.innerHTML=''; body.scrollTop=0;\n  if(!cur) return;\n  if(curTab==='area'){\n    var pics=imagesOf(cur);\n    if(pics.length) body.appendChild(gallery(pics, cur.name));\n    body.appendChild(prose(cur.description));\n  } else {\n    body.appendChild(carousel(cur.characters));\n  }\n}\n/* A place may carry several pictures; a region, or a place saved before that, carries one. */\nfunction imagesOf(p){ return (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []); }\n/* One picture sits in the panel exactly as it always has. Several become a small gallery in a\n   frame shaped by the first of them, so the text below stays put while you page through, and\n   nothing is cut: a picture of another shape is shown whole inside the frame. */\nfunction gallery(list, name){\n  if(list.length===1){\n    var one=new Image(); one.className='area'; one.src=list[0]; one.alt=name; return one;\n  }\n  var root=document.createElement('div'); root.className='gal';\n  var win=document.createElement('div'); win.className='gal-win';\n  var track=document.createElement('div'); track.className='track';\n  list.forEach(function(src,i){\n    var s=document.createElement('div'); s.className='gal-slide';\n    var im=new Image(); im.src=src; im.alt=name+', picture '+(i+1)+' of '+list.length;\n    if(i===0) im.onload=function(){\n      if(im.naturalWidth) win.style.aspectRatio=im.naturalWidth+' / '+im.naturalHeight;\n    };\n    s.appendChild(im); track.appendChild(s);\n  });\n  win.appendChild(track); root.appendChild(win);\n\n  var nav=document.createElement('div'); nav.className='car-nav';\n  var prev=document.createElement('button'); prev.innerHTML='&#8249;'; prev.setAttribute('aria-label','Previous picture');\n  var next=document.createElement('button'); next.innerHTML='&#8250;'; next.setAttribute('aria-label','Next picture');\n  var dots=document.createElement('div'); dots.className='dots';\n  var at=0;\n  list.forEach(function(src,i){\n    var d=document.createElement('button'); d.setAttribute('aria-label','Picture '+(i+1));\n    d.onclick=function(){ at=i; upd(); }; dots.appendChild(d);\n  });\n  nav.appendChild(prev); nav.appendChild(dots); nav.appendChild(next);\n  root.appendChild(nav);\n  function upd(){\n    at=Math.max(0,Math.min(list.length-1,at));\n    track.style.transform='translateX('+(-at*100)+'%)';\n    prev.disabled=at===0; next.disabled=at===list.length-1;\n    for(var i=0;i<dots.children.length;i++) dots.children[i].setAttribute('aria-current', i===at?'true':'false');\n  }\n  prev.onclick=function(){ at--; upd(); };\n  next.onclick=function(){ at++; upd(); };\n  var sw=null;\n  win.addEventListener('pointerdown',function(e){ sw={x:e.clientX}; });\n  win.addEventListener('pointerup',function(e){\n    if(!sw) return;\n    var d=e.clientX-sw.x;\n    if(Math.abs(d)>45){ at += d<0?1:-1; upd(); }\n    sw=null;\n  });\n  upd();\n  return root;\n}\nfunction carousel(list){\n  var root=document.createElement('div'); root.className='car';\n  var win=document.createElement('div'); win.className='car-win';\n  var track=document.createElement('div'); track.className='track';\n  list.forEach(function(c){\n    var s=document.createElement('div'); s.className='slide';\n    if(c.image){ var im=new Image(); im.src=c.image; im.alt=c.name; s.appendChild(im); }\n    else { var ph=document.createElement('div'); ph.className='ph'; ph.textContent='no portrait'; s.appendChild(ph); }\n    var h=document.createElement('h4'); h.textContent=c.name||'Unnamed'; s.appendChild(h);\n    if(c.role){ var r=document.createElement('p'); r.className='role'; r.textContent=c.role; s.appendChild(r); }\n    s.appendChild(prose(c.description));\n    track.appendChild(s);\n  });\n  win.appendChild(track); root.appendChild(win);\n\n  var nav=document.createElement('div'); nav.className='car-nav';\n  var prev=document.createElement('button'); prev.innerHTML='&#8249;'; prev.setAttribute('aria-label','Previous character');\n  var next=document.createElement('button'); next.innerHTML='&#8250;'; next.setAttribute('aria-label','Next character');\n  var dots=document.createElement('div'); dots.className='dots';\n  list.forEach(function(c,i){\n    var d=document.createElement('button'); d.setAttribute('aria-label',(i+1)+'. '+(c.name||''));\n    d.onclick=function(){ ci=i; upd(); }; dots.appendChild(d);\n  });\n  nav.appendChild(prev); nav.appendChild(dots); nav.appendChild(next);\n  if(list.length>1) root.appendChild(nav);\n\n  function upd(){\n    ci=Math.max(0,Math.min(list.length-1,ci));\n    track.style.transform='translateX('+(-ci*100)+'%)';\n    prev.disabled=ci===0; next.disabled=ci===list.length-1;\n    var ds=dots.children;\n    for(var i=0;i<ds.length;i++) ds[i].setAttribute('aria-current', i===ci?'true':'false');\n  }\n  prev.onclick=function(){ ci--; upd(); };\n  next.onclick=function(){ ci++; upd(); };\n  var sw=null;\n  win.addEventListener('pointerdown',function(e){ sw={x:e.clientX}; });\n  win.addEventListener('pointerup',function(e){\n    if(!sw) return;\n    var d=e.clientX-sw.x;\n    if(Math.abs(d)>45){ ci += d<0?1:-1; upd(); }\n    sw=null;\n  });\n  root.carUpd=upd;\n  setTimeout(upd,0);\n  return root;\n}\ndocument.addEventListener('keydown',function(e){\n  if(e.key==='Escape'){ closeSheet(); return; }\n  if(!cur||curTab!=='chars') return;\n  var c=body.querySelector('.car');\n  if(!c||!c.carUpd) return;\n  if(e.key==='ArrowRight'){ ci++; c.carUpd(); }\n  if(e.key==='ArrowLeft'){ ci--; c.carUpd(); }\n});\n\n/* --- legend + about the atlas --- */\n(function(){\n  var used={};\n  DATA.pois.forEach(function(p){ if(p.factionId) used[p.factionId]=1; });\n  DATA.factions.forEach(function(f){ if(hasArea(f)||f.anchor) used[f.id]=1; });\n  var lg=document.getElementById('legend');\n  DATA.factions.forEach(function(f){\n    if(!used[f.id]) return;\n    var s=document.createElement('span');\n    var i=document.createElement('i'); i.style.background=f.color;\n    s.appendChild(i); s.appendChild(document.createTextNode(f.label));\n    lg.appendChild(s);\n  });\n  if(DATA.intro){\n    var b=document.getElementById('aboutBtn'); b.hidden=false;\n    b.onclick=function(){\n      var ov=document.createElement('div'); ov.className='about';\n      var box=document.createElement('div'); box.className='box';\n      var h=document.createElement('h3'); h.textContent=DATA.title; box.appendChild(h);\n      box.appendChild(prose(DATA.intro));\n      var cl=document.createElement('button'); cl.className='ghost'; cl.textContent='Close';\n      cl.style.marginTop='18px'; cl.style.color='#241c11'; cl.style.borderColor='rgba(60,44,20,.4)';\n      cl.onclick=function(){ ov.remove(); };\n      box.appendChild(cl); ov.appendChild(box);\n      ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });\n      document.body.appendChild(ov);\n    };\n  }\n})();\n\n/* --- magic under the map --- */\n/* Glowing motes on a canvas behind the map. No library: a sprite drawn up front\n   and requestAnimationFrame are enough, and the exported map stays one offline file. */\n(function(){\n  var c=document.getElementById('magic');\n  if(!c||!c.getContext) return;\n  var ctx=c.getContext('2d');\n  var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);\n  var css=getComputedStyle(document.documentElement);\n  var warm=css.getPropertyValue('--mote-warm').trim()||'#e8bd72';\n  var cool=css.getPropertyValue('--mote-cool').trim()||'#8fd6c4';\n  var W=0,H=0,motes=[],last=0;\n\n  // one glowing dot per color, drawn once; a gradient per mote per frame would be expensive\n  function sprite(hex){\n    var s=document.createElement('canvas'); s.width=s.height=64;\n    var g=s.getContext('2d'), gr=g.createRadialGradient(32,32,0,32,32,32);\n    gr.addColorStop(0,rgba(hex,1)); gr.addColorStop(.12,rgba(hex,.9));\n    gr.addColorStop(.35,rgba(hex,.25)); gr.addColorStop(1,rgba(hex,0));\n    g.fillStyle=gr; g.fillRect(0,0,64,64);\n    return s;\n  }\n  var glowWarm=sprite(warm), glowCool=sprite(cool);\n\n  function mote(){\n    var d=.25+Math.random()*.75;   // depth: nearer motes are bigger, faster and move more with the map\n    return {x:Math.random()*W, y:Math.random()*H, d:d,\n      r:(5+Math.random()*9)*d, vy:(5+Math.random()*12)*d,\n      sw:5+Math.random()*16, ph:Math.random()*6.28, fr:.15+Math.random()*.45,\n      tw:Math.random()*6.28, img:Math.random()<.7?glowWarm:glowCool};\n  }\n  function size(){\n    var dpr=Math.min(window.devicePixelRatio||1,2);\n    W=vp.clientWidth; H=vp.clientHeight;\n    c.width=Math.round(W*dpr); c.height=Math.round(H*dpr);\n    ctx.setTransform(dpr,0,0,dpr,0,0);\n    // mote count follows the area, so a phone does not get the same load as a large monitor\n    var n=Math.round(Math.max(24,Math.min(90,W*H/16000)));\n    while(motes.length<n) motes.push(mote());\n    motes.length=n;\n  }\n  function wrap(v,m){ return ((v%m)+m)%m; }\n  function frame(t){\n    var dt=last?Math.min(.05,(t-last)/1000):0; last=t;\n    var spanX=W+60, spanY=H+60;\n    ctx.clearRect(0,0,W,H);\n    ctx.globalCompositeOperation='lighter';\n    for(var i=0;i<motes.length;i++){\n      var m=motes[i];\n      m.y=wrap(m.y-m.vy*dt,spanY); m.ph+=m.fr*dt; m.tw+=(.8+m.d)*dt;\n      // gentle parallax: when the map pans, distant motes move less than near ones\n      var x=wrap(m.x+Math.sin(m.ph)*m.sw+V.x*.05*m.d,spanX)-30;\n      var y=wrap(m.y+V.y*.05*m.d,spanY)-30;\n      // a mote lights up at the bottom edge and fades at the top — the wrap is never visible\n      var edge=Math.max(0,Math.min(1,(H+30-y)/120,(y+30)/140));\n      ctx.globalAlpha=(.3+.7*(.5+.5*Math.sin(m.tw)))*(.35+.65*m.d)*edge;\n      ctx.drawImage(m.img,x-m.r,y-m.r,m.r*2,m.r*2);\n    }\n    ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';\n    if(!calm && !document.hidden) requestAnimationFrame(frame);\n  }\n  size();\n  window.addEventListener('resize',function(){ size(); if(calm){ last=0; frame(0); } });\n  // a hidden tab draws nothing; on a phone that is battery worth keeping\n  document.addEventListener('visibilitychange',function(){\n    if(!document.hidden && !calm){ last=0; requestAnimationFrame(frame); }\n  });\n  requestAnimationFrame(frame);\n})();\n\n/* --- clouds over the map --- */\n/* A canvas inside the map layer: the clouds pan and zoom with the terrain, and the edge of\n   the canvas keeps them over the image. They belong to the overview - move closer and they go. */\nvar clouds=(function(){\n  var cn=null, cx=null, list=[], W=0, H=0, pad=0, last=0, on=false, shown=-1;\n  // many drawn maps carry a painted frame: the clouds stay off it, on the land itself\n  var INSET=.07;\n  var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);\n  var tint=(getComputedStyle(document.documentElement).getPropertyValue('--cloud')||'').trim()||'#eef4f0';\n\n  // A cloud is a row of circles baked into a sprite of its own: one drawImage per frame.\n  // The circles go into a single path, because overlapping translucent puffs would leave\n  // a brighter disc at every crossing. The path itself is drawn off to the side - only its\n  // shadow lands on the sprite, which is how the silhouette gets its soft rim.\n  function bake(){\n    var w=340, h=200, s=document.createElement('canvas'); s.width=w; s.height=h;\n    var g=s.getContext('2d'), n=6+Math.floor(Math.random()*3), i, r, u, x, y;\n    var blur=24;\n    // The soft rim spreads `blur` past the shape, and whatever falls outside the sprite is\n    // cut off square — which is what a cloud sliced down one side looks like. So the shape\n    // itself stays a clear margin away from every edge of its canvas.\n    var pad=blur+6, iw=w-pad*2, base=h-pad-52, off=w+90;\n    g.shadowColor=rgba(tint,1); g.shadowBlur=blur; g.shadowOffsetX=off;\n    g.fillStyle='#000';\n    g.beginPath();\n    for(i=0;i<n;i++){\n      u=n>1?i/(n-1):.5;\n      // the middle of a cloud towers, the ends taper down to the same flat base\n      r=(17+Math.random()*7)+(38+Math.random()*13)*Math.sin(u*3.14);\n      // the base is level, but not ruled: a perfectly straight underside looks cut out\n      x=pad+r+(iw-r*2)*u; y=base-r*.66+(Math.random()-.5)*11;\n      g.moveTo(x-off+r,y); g.arc(x-off,y,r,0,6.2832);\n    }\n    for(i=0;i<2;i++){   // a couple heaped into the crest, so the outline is not a dome\n      r=20+Math.random()*13;\n      x=w*.5+(Math.random()-.5)*iw*.26; y=base-46-Math.random()*22;\n      g.moveTo(x-off+r,y); g.arc(x-off,y,r,0,6.2832);\n    }\n    g.fill();\n    g.shadowColor='transparent'; g.shadowBlur=0; g.shadowOffsetX=0;\n    // light from above: the crown keeps the tint, the underside sinks into shade\n    g.globalCompositeOperation='source-atop';\n    var lg=g.createLinearGradient(0,base-h*.55,0,base+8);\n    lg.addColorStop(0,'rgba(255,255,255,0)'); lg.addColorStop(1,'rgba(26,42,44,.38)');\n    g.fillStyle=lg; g.fillRect(0,0,w,h);\n    g.globalCompositeOperation='source-over';\n    return s;\n  }\n  function build(){\n    var art=[bake(),bake(),bake(),bake()], i;\n    // the count follows the map area, so a small sketch does not end up overcast\n    var n=Math.round(Math.max(3,Math.min(17,(W-pad*2)*(H-pad*2)/30000)));\n    list=[];\n    var iw=W-pad*2, ih=H-pad*2;\n    for(i=0;i<n;i++){\n      var im=art[Math.floor(Math.random()*art.length)], cw=iw*(.17+Math.random()*.21);\n      list.push({img:im, w:cw, h:cw*im.height/im.width,\n        x:pad+Math.random()*(iw+cw)-cw, y:0, v:(4+Math.random()*8)*(iw/1200),\n        a:.2+Math.random()*.22, ph:Math.random()*6.28, bob:3+Math.random()*8});\n    }\n    for(i=0;i<list.length;i++){\n      var c=list[i];\n      c.y=pad+c.bob+Math.random()*Math.max(1,ih-c.h-c.bob*2);\n    }\n  }\n  function frame(t){\n    var dt=last?Math.min(.05,(t-last)/1000):0; last=t;\n    cx.clearRect(0,0,W,H);\n    for(var i=0;i<list.length;i++){\n      var c=list[i];\n      c.x+=c.v*dt; c.ph+=.3*dt;\n      if(c.x>W-pad) c.x=pad-c.w;   // the wind is westerly, so it comes back in on the left\n      // the fade counts from the edges of the cloud, not its middle, so nothing of it\n      // is left by the time it reaches the inset - a painted frame stays clear\n      var iw=W-pad*2, m=Math.min(c.w*.32, iw*.12);\n      cx.globalAlpha=c.a*Math.max(0,Math.min(1,(c.x-pad)/m,(pad+iw-c.x-c.w)/m));\n      cx.drawImage(c.img, c.x, c.y+Math.sin(c.ph)*c.bob, c.w, c.h);\n    }\n    cx.globalAlpha=1;\n    if(on&&!calm) requestAnimationFrame(frame);\n  }\n  function mount(parent){\n    if(!DATA.map) return;\n    cn=document.createElement('canvas');\n    if(!cn.getContext){ cn=null; return; }\n    cn.className='clouds'; cn.setAttribute('aria-hidden','true');\n    // The sprites are soft, so a reduced backing store is enough and a large map stays cheap.\n    // A phone never shows the map at more than a few hundred points across, so it gets less.\n    var room=Math.max(480, Math.round(Math.min(screen.width,screen.height)*2));\n    W=Math.min(1200, DATA.map.w, room); H=Math.max(1,Math.round(W*DATA.map.h/DATA.map.w));\n    pad=Math.round(Math.min(W,H)*INSET);\n    cn.width=W; cn.height=H; cx=cn.getContext('2d');\n    build(); parent.appendChild(cn); frame(0);\n  }\n  // full at the overview and gone soon after: from up close a cloud is only a blurred sprite\n  function zoom(t){\n    if(!cn) return;\n    var v=t<=1.1?1:(t>=1.7?0:(1.7-t)/.6);\n    v=Math.round(v*100)/100;\n    if(v===shown) return;\n    shown=v; run(v>0);\n  }\n  function run(want){\n    cn.style.opacity=shown;\n    // nothing to draw for a tab nobody is looking at — on a phone that is battery\n    if(want && !document.hidden){ if(!on){ on=true; last=0; requestAnimationFrame(frame); } }\n    else on=false;\n  }\n  document.addEventListener('visibilitychange',function(){ if(cn) run(shown>0); });\n  return {mount:mount, zoom:zoom};\n})();\n\n/* --- sessions --- */\n/* The reader lands in the latest session, the state of the world as it stands, and can walk\n   back through the campaign. Only the points move; the map, the regions and every word\n   written about a place are the same in all of them. */\nfunction drawSessions(){\n  var bar=document.getElementById('sess');\n  if(DATA.sessions.length<2) return;      // one session is no timeline\n  bar.hidden=false;\n  function paint(){\n    document.getElementById('sessName').textContent=DATA.sessions[SESSION].label;\n    document.getElementById('sessCount').textContent=(SESSION+1)+' / '+DATA.sessions.length;\n    document.getElementById('sessPrev').disabled=SESSION===0;\n    document.getElementById('sessNext').disabled=SESSION===DATA.sessions.length-1;\n    DATA.pois.forEach(function(p){\n      var el=cv.querySelector('.pin:not(.big)[data-id=\"'+p.id+'\"]');\n      if(!el) return;\n      var at=posAt(p, SESSION);\n      el.style.left=(at.x*100)+'%'; el.style.top=(at.y*100)+'%';\n    });\n  }\n  function go(i){\n    SESSION=Math.max(0,Math.min(DATA.sessions.length-1,i));\n    paint();\n  }\n  document.getElementById('sessPrev').onclick=function(){ go(SESSION-1); };\n  document.getElementById('sessNext').onclick=function(){ go(SESSION+1); };\n  paint();\n}\n\ndrawMap(); drawSessions();\n// opens on the whole map, or pulled back like a cover when that is what gives the title room\nvar z0=startZoom();\nsizeTitle(z0);\nshowAt(z0);\n<\/script>\n<\/body>\n<\/html>\n";
+
+function esc(s){
+  return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function buildSite(){
+  // The whole project is packed into the file, which is what lets the finished map be
+  // opened here again. Which part of it the map draws is decided in the viewer: hidden
+  // points, and the content of a region without a big pin, never reach the page.
+  var json = JSON.stringify(S).replace(/</g,"\\u003c").replace(/\u2028/g,"\\u2028").replace(/\u2029/g,"\\u2029");
+  return VIEWER
+    .split("__TITLE__").join(esc(S.title||"Atlas"))
+    .split("__SUBTITLE__").join(esc(S.subtitle||""))
+    .replace("__ICONS__", JSON.stringify(ICONS))
+    .replace("__TYPES__", JSON.stringify(TYPE_LABELS))
+    .replace("__DATA__", json);
+}
+
+document.getElementById("btnPreview").onclick = function(){
+  if(!S.map) return toast("Upload a map image first.");
+  var html = buildSite();
+  modal(function(sheet, close){
+    sheet.appendChild(el("h3",null,"Preview of the finished site"));
+    sheet.appendChild(el("p","sub","This is what the finished map shows. Hidden points are not on it, though they do travel inside the exported file."));
+    var f = document.createElement("iframe");
+    f.className="preview-frame"; f.setAttribute("title","Preview");
+    f.srcdoc = html;
+    sheet.appendChild(f);
+    var acts = el("div","sheet-actions");
+    var ok=el("button","tbtn","Close"); ok.onclick=close;
+    acts.appendChild(ok); sheet.appendChild(acts);
+  }, true);
+};
+
+document.getElementById("btnExport").onclick = function(){
+  if(!S.map) return toast("Upload a map image first.");
+  var html = buildSite();
+  var visible = S.pois.filter(function(p){ return !p.hidden; }).length;
+  var chars = S.pois.reduce(function(a,p){ return a + (p.hidden?0:p.characters.length); },0);
+  var regs = S.factions.filter(function(f){ return hasArea(f) || f.anchor; }).length;
+  var kept = S.pois.length - visible;
+  modal(function(sheet, close){
+    sheet.appendChild(el("h3",null,"Export site"));
+    sheet.appendChild(el("p","sub","You get a single index.html file. The images are packed inside it, so it needs nothing else — just upload it anywhere. The project rides along in the file, so you can open it here again with “Open project”."));
+    var ul = el("div");
+    ul.style.cssText="border:1px solid var(--line);border-radius:3px;padding:12px 14px;margin-bottom:16px;color:var(--linen-2);line-height:1.8";
+    ul.innerHTML = "Points on the map: <b>"+visible+"</b><br>Regions with territory: <b>"+regs+"</b><br>Characters in total: <b>"+chars+"</b><br>File size: <b>"+fmtSize(html.length)+"</b>";
+    sheet.appendChild(ul);
+    if(kept){
+      // the file is meant to be handed out, so say plainly what leaves with it
+      var note = el("p","sub","Hidden points packed in: "+kept+". They stay off the map, but anyone who opens the file can read them.");
+      sheet.appendChild(note);
+    }
+    if(html.length > 12*1048576){
+      var warn = el("p","sub","The file is fairly large. Consider smaller images — loading on mobile will be slow.");
+      warn.style.color="var(--danger)";
+      sheet.appendChild(warn);
+    }
+    sheet.appendChild(field("File name", input("index.html", function(v){ fname=v; })));
+    var fname = "index.html";
+    var acts = el("div","sheet-actions");
+    var cancel = el("button","tbtn","Back"); cancel.onclick=close;
+    var go = el("button","tbtn primary","Download file");
+    go.onclick=function(){
+      download(fname || "index.html", html, "text/html;charset=utf-8")
+        .then(function(){ close(); toast("Done. Upload the file to your hosting."); })
+        .catch(function(){ toast("The download failed. Try opening the editor as a local file."); });
+    };
+    acts.appendChild(cancel); acts.appendChild(go);
+    sheet.appendChild(acts);
+  });
+};
+
+/* ============================ start ============================ */
+openDb().then(function(){ return dbGet("project"); }).then(function(saved){
+  S = saved ? normalize(saved) : blank();
+  renderAll();
+  if(S.map) setTimeout(fitView, 30);
+});
+
+</script>
+</body>
+</html>

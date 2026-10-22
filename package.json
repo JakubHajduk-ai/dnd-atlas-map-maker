@@ -1,0 +1,12 @@
+{
+  "name": "dnd-atlas-map-maker",
+  "version": "1.0.0",
+  "description": "Interactive map editor for tabletop RPGs. Exports a static site.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch"
+  }
+}

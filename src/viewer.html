@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Eczar:wght@500;600;700&family=Vollkorn:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0b1012; --ink-2:#121b1e; --line:rgba(180,135,74,.22); --line-2:rgba(180,135,74,.5);
+  --brass:#b4874a; --brass-lit:#dcae6a;
+  --linen:#ded3ba; --paper:#ddd1b4; --paper-2:#cdbe9b; --paper-ink:#241c11; --paper-mute:#5d5039;
+  --text:#e9e1d1; --muted:#9aa5a4;
+  --display:"Eczar",Georgia,serif; --body:"Vollkorn",Georgia,serif;
+  --mote-warm:#e8bd72; --mote-cool:#8fd6c4; --cloud:#eef4f0;
+  --frame-line:rgba(198,157,96,.62); --frame-band:rgba(12,17,15,.26);
+  --aura-warm:rgba(220,174,106,.08); --aura-cool:rgba(111,195,178,.10);
+}
+:root:not([data-theme="light"]){ }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ } }
+:root[data-theme="dark"]{ }
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--ink);color:var(--text);font-family:var(--body);overflow:hidden;
+  -webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--brass-lit);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation:none!important;transition:none!important} }
+
+.hdr{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:16px;
+  padding:11px 18px;background:linear-gradient(rgba(8,12,14,.94),rgba(8,12,14,.72),transparent);
+  pointer-events:none}
+.hdr > *{pointer-events:auto}
+.ttl{font-family:var(--display);font-size:20px;font-weight:600;color:var(--linen);line-height:1.15}
+.ttl small{display:block;font-family:var(--body);font-size:13px;font-weight:400;color:var(--muted);letter-spacing:.01em}
+.hdr .sp{flex:1}
+.legend{display:flex;gap:13px;flex-wrap:wrap;align-items:center}
+.legend span{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.legend i{width:9px;height:9px;border-radius:50%;display:block}
+.ghost{background:transparent;border:1px solid var(--line-2);border-radius:3px;padding:6px 12px;color:var(--linen)}
+.ghost:hover{background:rgba(180,135,74,.14)}
+
+.vp{position:absolute;inset:0;overflow:hidden;cursor:grab;touch-action:none;
+  background:radial-gradient(ellipse at 50% 42%,#15201e,#080c0e 72%)}
+.vp.drag{cursor:grabbing}
+/* magic under the map: a slowly breathing glow and rising motes (canvas #magic); they never reach over the map */
+.vp::before{content:"";position:absolute;inset:-25%;pointer-events:none;
+  background:
+    radial-gradient(38% 32% at 28% 62%,var(--aura-cool),transparent 70%),
+    radial-gradient(34% 30% at 74% 34%,var(--aura-warm),transparent 70%);
+  animation:aura 28s ease-in-out infinite alternate}
+@keyframes aura{from{transform:translate(-4%,3%) rotate(-4deg)} to{transform:translate(4%,-3%) rotate(6deg)}}
+.magic{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+.cv{position:absolute;top:0;left:0;transform-origin:0 0}
+.cv img.base{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;
+  box-shadow:0 20px 70px rgba(0,0,0,.65)}
+/* clouds sit in the map layer, so they pan and zoom with the terrain and are cut off at its edge */
+.clouds{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;
+  opacity:0;transition:opacity .35s ease}
+/* The point the coordinates mean is the centre of the knob, so that is what the pin is
+   anchored and scaled around. Anchoring it lower — at the foot of the name, say — would
+   leave the knob hanging a fixed number of screen pixels above the spot, which is a
+   different distance on the map at every zoom level: the marker would crawl as you zoom. */
+.pin{position:absolute;--knob:16px;
+  transform:translate(-50%,calc(var(--knob) / -2)) scale(var(--inv,1));
+  transform-origin:50% calc(var(--knob) / 2);
+  display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;padding:0;
+  user-select:none;-webkit-user-select:none;
+  /* switching sessions moves the points, and seeing them travel is the whole point */
+  transition:left .55s cubic-bezier(.22,.7,.3,1),top .55s cubic-bezier(.22,.7,.3,1)}
+.pin .knob{width:var(--knob);height:var(--knob);border-radius:50%;
+  background:var(--pc);border:1.2px solid rgba(0,0,0,.45);display:grid;place-items:center;
+  box-shadow:0 2px 5px rgba(0,0,0,.5);transition:box-shadow .18s}
+.pin .knob svg{width:9.5px;height:9.5px;color:#0b1012}
+/* a city outranks a hamlet or a lone traveller, so it is given a larger mark */
+.pin[data-type="city"]{--knob:21px}
+.pin[data-type="city"] .knob svg{width:12.5px;height:12.5px}
+/* The name is set straight onto the land: white letters with a dark outline read over
+   forest and sea alike, and nothing boxes in the map underneath. */
+.pin .lbl{font-family:var(--display);font-size:12.5px;font-weight:600;color:#fff;
+  white-space:nowrap;-webkit-text-stroke:2.5px rgba(0,0,0,.92);paint-order:stroke fill;
+  text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.pin:hover .knob,.pin[aria-current="true"] .knob{box-shadow:0 0 0 2.5px var(--brass-lit),0 2px 6px rgba(0,0,0,.55)}
+/* A region is lettered, not pinned: just its name, centred on the anchor and set wide in
+   capitals the way a province is written across a map. Its colour survives as a faint glow
+   behind the letters, since there is no knob left to carry it. */
+.pin.big{transform:translate(-50%,-50%) scale(var(--inv,1));transform-origin:50% 50%}
+.pin.big .lbl{font-size:14.5px;letter-spacing:.14em;text-transform:uppercase;
+  -webkit-text-stroke-width:3px;text-shadow:0 0 14px var(--pc),0 1px 2px rgba(0,0,0,.5);
+  transition:color .18s}
+.pin.big:hover .lbl,.pin.big[data-hot="1"] .lbl,.pin.big[aria-current="true"] .lbl{color:var(--brass-lit)}
+
+/* A neatline for map images that bring no border of their own: two engraved rules with a
+   tinted margin between them and a lozenge at the corners and at the middle of each side.
+   It is drawn in map units, so it belongs to the sheet and zooms with it. */
+.frame{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.frame .band{fill:var(--frame-band)}
+.frame .rule{fill:none;stroke:var(--frame-line)}
+.frame .orn{fill:var(--frame-line)}
+
+/* Title artwork hangs in the open space above the sheet: part of the map layer, so it moves
+   and zooms with it, but always clear of it. sizeTitle() fits it to that space and apply()
+   fades it out once moving in pushes it up under the header. */
+.title-art{position:absolute;left:50%;bottom:102.5%;transform:translateX(-50%);
+  height:13%;max-width:70%;object-fit:contain;pointer-events:none;   /* sizeTitle() refines these */
+  user-select:none;-webkit-user-drag:none;opacity:0;transition:opacity .35s ease;
+  filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
+
+/* region areas: invisible, they exist only so the map knows which region you are over */
+.areas{position:absolute;top:0;left:0;overflow:visible}
+.areas polygon{fill:transparent;stroke:none;pointer-events:fill}
+
+/* what the cursor is over right now */
+.rgn{position:fixed;left:16px;bottom:16px;z-index:20;display:flex;align-items:center;gap:9px;
+  padding:7px 14px;background:rgba(8,12,14,.88);border:1px solid var(--line-2);border-radius:3px;
+  font-family:var(--display);font-size:13.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--linen);pointer-events:none;opacity:0;transition:opacity .18s}
+.rgn.on{opacity:1}
+.rgn i{width:9px;height:9px;border-radius:50%;display:block;flex:0 0 auto}
+
+/* the moment of the campaign being read; only there when the atlas has more than one */
+.sess{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:20;
+  display:flex;align-items:center;gap:2px;max-width:min(420px,calc(100% - 150px));
+  background:rgba(8,12,14,.88);border:1px solid var(--line-2);border-radius:3px;padding:3px 4px}
+.sess button{width:30px;height:30px;background:none;border:none;border-radius:2px;
+  color:var(--linen);font-size:17px;line-height:1}
+.sess button:hover:not(:disabled){background:rgba(180,135,74,.16)}
+.sess button:disabled{opacity:.25;cursor:default}
+.sess-body{min-width:0;padding:0 6px;text-align:center}
+.sess-name{display:block;font-family:var(--display);font-size:13.5px;font-weight:600;color:var(--linen);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess-count{display:block;font-size:11px;color:var(--muted);letter-spacing:.06em}
+
+.zoom{position:fixed;right:16px;bottom:16px;z-index:20;display:flex;flex-direction:column;gap:5px}
+.zoom button{width:36px;height:36px;background:rgba(8,12,14,.88);border:1px solid var(--line-2);
+  border-radius:3px;color:var(--linen);font-size:18px;line-height:1}
+.zoom button:hover{background:#1b262b}
+
+/* ---------- parchment panel ---------- */
+.sheet{position:fixed;top:0;right:0;bottom:0;width:min(430px,100%);z-index:30;display:flex;flex-direction:column;
+  background:
+    radial-gradient(120% 90% at 8% 0%,rgba(255,250,235,.55),transparent 60%),
+    radial-gradient(100% 80% at 100% 100%,rgba(120,92,48,.30),transparent 62%),
+    linear-gradient(var(--paper),var(--paper-2));
+  color:var(--paper-ink);border-left:1px solid rgba(60,44,20,.5);
+  box-shadow:-18px 0 50px rgba(0,0,0,.5);
+  transform:translateX(100%);transition:transform .28s cubic-bezier(.22,.7,.3,1)}
+.sheet.open{transform:none}
+.sheet::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.35;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
+.sheet > *{position:relative}
+.sh-head{padding:20px 22px 0;flex:0 0 auto}
+.sh-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border:1px solid rgba(60,44,20,.35);
+  background:rgba(255,250,235,.4);border-radius:2px;color:var(--paper-ink);font-size:16px;line-height:1;z-index:2}
+.sh-close:hover{background:rgba(255,250,235,.8)}
+.sh-kicker{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--paper-mute);margin-bottom:2px}
+.sh-kicker i{width:8px;height:8px;border-radius:50%;display:block}
+.sh-title{font-family:var(--display);font-size:27px;font-weight:600;line-height:1.1;margin:0 34px 4px 0}
+.sh-sum{font-style:italic;color:var(--paper-mute);margin:0;line-height:1.5}
+.sh-tabs{display:flex;gap:18px;margin-top:16px;border-bottom:1px solid rgba(60,44,20,.28)}
+.sh-tabs button{background:none;border:none;padding:0 0 9px;font-family:var(--display);font-weight:600;
+  font-size:15px;color:var(--paper-mute);border-bottom:2px solid transparent;margin-bottom:-1px}
+.sh-tabs button[aria-selected="true"]{color:var(--paper-ink);border-bottom-color:#7a5a24}
+.sh-body{flex:1;overflow-y:auto;padding:18px 22px 26px}
+.sh-body img.area{width:100%;border-radius:2px;border:1px solid rgba(60,44,20,.35);margin-bottom:16px;display:block}
+/* several pictures of a place: a frame shaped by the first, the others shown whole inside it */
+.gal{margin-bottom:16px}
+.gal-win{overflow:hidden;aspect-ratio:3 / 2;border-radius:2px;border:1px solid rgba(60,44,20,.35);
+  background:rgba(60,44,20,.1);touch-action:pan-y}
+.gal-win .track{height:100%}
+.gal-slide{flex:0 0 100%;min-width:0;height:100%}
+.gal-slide img{width:100%;height:100%;object-fit:contain;display:block;user-select:none;-webkit-user-drag:none}
+.gal .car-nav{margin-top:10px}
+.prose p{margin:0 0 .85em;line-height:1.68;max-width:62ch}
+.prose p:last-child{margin-bottom:0}
+.none{color:var(--paper-mute);font-style:italic}
+
+/* ---------- character carousel ---------- */
+.car{position:relative}
+.car-win{overflow:hidden}
+.track{display:flex;transition:transform .3s cubic-bezier(.22,.7,.3,1)}
+.slide{flex:0 0 100%;min-width:0;padding:0 1px}
+.slide img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:2px;
+  border:1px solid rgba(60,44,20,.4);display:block;margin-bottom:12px;filter:saturate(.92)}
+.slide .ph{width:100%;aspect-ratio:3/4;border:1px dashed rgba(60,44,20,.35);border-radius:2px;
+  display:grid;place-items:center;color:var(--paper-mute);margin-bottom:12px;font-style:italic;font-size:13px}
+.slide h4{font-family:var(--display);font-size:21px;font-weight:600;margin:0 0 1px}
+.slide .role{color:var(--paper-mute);font-size:13.5px;margin:0 0 10px}
+.car-nav{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:12px}
+.car-nav button{width:32px;height:32px;border:1px solid rgba(60,44,20,.4);background:rgba(255,250,235,.35);
+  border-radius:2px;font-size:15px;line-height:1}
+.car-nav button:hover:not(:disabled){background:rgba(255,250,235,.8)}
+.car-nav button:disabled{opacity:.3;cursor:default}
+.dots{display:flex;gap:6px;justify-content:center;flex:1}
+.dots button{width:7px;height:7px;padding:0;border-radius:50%;border:none;background:rgba(60,44,20,.3)}
+.dots button[aria-current="true"]{background:#7a5a24;transform:scale(1.4)}
+
+.about{position:fixed;inset:0;z-index:40;background:rgba(6,10,11,.76);display:grid;place-items:center;padding:24px}
+.about .box{background:linear-gradient(var(--paper),var(--paper-2));color:var(--paper-ink);
+  max-width:520px;padding:26px;border-radius:3px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.about h3{font-family:var(--display);font-size:24px;margin:0 0 10px}
+
+@media (max-width:760px){
+  /* dvh, because on a phone the browser bar slides away and vh does not follow */
+  .sheet{top:auto;left:0;width:100%;height:80vh;height:80dvh;border-left:none;border-top:1px solid rgba(60,44,20,.5);
+    border-radius:6px 6px 0 0;transform:translateY(100%);box-shadow:0 -18px 50px rgba(0,0,0,.5)}
+  .sheet.open{transform:none}
+  .sh-head{padding:16px 18px 0}
+  .sh-title{font-size:24px}
+  .sh-body{padding:16px 18px calc(26px + env(safe-area-inset-bottom, 0px))}
+  .legend{display:none}
+  .ttl{font-size:17px}
+  .hdr{padding:9px 14px;gap:10px}
+  .ghost{padding:8px 12px;font-size:14px}
+  /* the whole map is small on a phone, so its markers have to come down with it,
+     or the labels cover the land they are pointing at */
+  .pin{--knob:13px}
+  .pin[data-type="city"]{--knob:17px}
+  .pin .knob{border-width:1px}
+  .pin .knob svg{width:8px;height:8px}
+  .pin[data-type="city"] .knob svg{width:10px;height:10px}
+  .pin .lbl{font-size:11px;-webkit-text-stroke-width:2.5px}
+  .pin.big .lbl{font-size:12.5px;letter-spacing:.1em;-webkit-text-stroke-width:2.5px}
+}
+/* Touch targets go by the input, not by the width: a phone held sideways is wider than the
+   breakpoint but the finger is the same size. */
+@media (pointer:coarse){
+  .zoom{right:12px;bottom:calc(14px + env(safe-area-inset-bottom, 0px));gap:8px}
+  .zoom button{width:44px;height:44px;font-size:20px}
+  .sh-close{width:38px;height:38px;font-size:18px}
+  .car-nav button{width:40px;height:40px}
+  .dots button{width:9px;height:9px}
+  .ghost{padding:9px 13px}
+}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <div class="ttl">__TITLE__<small>__SUBTITLE__</small></div>
+  <div class="sp"></div>
+  <div class="legend" id="legend"></div>
+  <button class="ghost" id="aboutBtn" hidden>About this atlas</button>
+</header>
+
+<div class="vp" id="vp"><canvas class="magic" id="magic" aria-hidden="true"></canvas><div class="cv" id="cv"></div></div>
+
+<div class="zoom">
+  <button id="zi" aria-label="Zoom in">+</button>
+  <button id="zo" aria-label="Zoom out">&#8722;</button>
+  <button id="zf" aria-label="Fit the whole map" style="font-size:11px">fit</button>
+</div>
+
+<div class="rgn" id="rgn" aria-hidden="true"><i></i><span></span></div>
+
+<nav class="sess" id="sess" hidden aria-label="Sessions">
+  <button id="sessPrev" aria-label="Earlier session">‹</button>
+  <span class="sess-body"><span class="sess-name" id="sessName"></span><span class="sess-count" id="sessCount"></span></span>
+  <button id="sessNext" aria-label="Later session">›</button>
+</nav>
+
+<aside class="sheet" id="sheet" aria-hidden="true">
+  <button class="sh-close" id="shClose" aria-label="Close">&#215;</button>
+  <div class="sh-head">
+    <div class="sh-kicker" id="shKicker"></div>
+    <h2 class="sh-title" id="shTitle"></h2>
+    <p class="sh-sum" id="shSum"></p>
+    <div class="sh-tabs" role="tablist">
+      <button id="tabArea" role="tab" aria-selected="true">Area</button>
+      <button id="tabChars" role="tab" aria-selected="false">Characters</button>
+    </div>
+  </div>
+  <div class="sh-body" id="shBody"></div>
+</aside>
+
+<script type="application/json" id="atlas-project">__DATA__</script>
+<script>
+var ICONS = __ICONS__;
+var TYPES = __TYPES__;
+
+/* The whole project is packed into the file, so the editor can open the finished map again.
+   The map itself shows only part of it: a hidden point, and a region that was never given a
+   big pin, have nowhere to appear. */
+var PROJECT = JSON.parse(document.getElementById('atlas-project').textContent);
+var DATA = published(PROJECT);
+// the reader starts in the latest session: the world as it stands now
+var SESSION = Math.max(0, DATA.sessions.length-1);
+function published(p){
+  return {
+    title:p.title, subtitle:p.subtitle, intro:p.intro, map:p.map,
+    sessions:p.sessions||[],
+    frame:p.frame!==false,
+    titleImage:p.titleImage||null,
+    factions:(p.factions||[]).map(function(f){
+      var pinned = !!f.anchor;
+      return {id:f.id, label:f.label, color:f.color,
+        area:(f.area&&f.area.length>2)?f.area:null, anchor:f.anchor||null,
+        summary:pinned?f.summary:'', description:pinned?f.description:'',
+        image:pinned?f.image:null, characters:[]};
+    }),
+    pois:(p.pois||[]).filter(function(q){ return !q.hidden; })
+  };
+}
+
+function ic(t){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[t]||ICONS.place)+'<\/svg>';
+}
+function fac(p){
+  for(var i=0;i<DATA.factions.length;i++) if(DATA.factions[i].id===p.factionId) return DATA.factions[i];
+  return null;
+}
+function col(p){ var f=fac(p); return f?f.color:'#8a8f8c'; }
+function rgba(hex,a){
+  var h=hex.replace('#','');
+  if(h.length===3) h=h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2);
+  var n=parseInt(h,16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
+}
+
+/* --- map --- */
+var vp=document.getElementById('vp'), cv=document.getElementById('cv');
+var V={z:1,x:0,y:0};
+// keep the map inside the viewport: panning stops at the image edges, and an axis
+// that is smaller than the viewport stays centred
+function clamp(){
+  if(!DATA.map) return;
+  var r=vp.getBoundingClientRect(), w=DATA.map.w*V.z, h=DATA.map.h*V.z;
+  V.x = w<=r.width  ? (r.width-w)/2  : Math.min(0,Math.max(r.width-w, V.x));
+  V.y = h<=r.height ? (r.height-h)/2 : Math.min(0,Math.max(r.height-h,V.y));
+}
+function apply(){
+  clamp();
+  cv.style.transform='translate('+V.x+'px,'+V.y+'px) scale('+V.z+')';
+  cv.style.setProperty('--inv',1/V.z);
+  // how far the view has zoomed past the overview: 1 = whole map on screen
+  var t=V.z/fitZoom();
+  if(clouds) clouds.zoom(t);
+  // The title artwork lives in the open space above the sheet. It shows while it hangs in
+  // clear air and fades as moving in pushes it up under the header and off the screen.
+  var art=cv.querySelector('.title-art');
+  if(art && !art.hidden){
+    var clear=art.getBoundingClientRect().top-vp.getBoundingClientRect().top-headerBottom();
+    art.style.opacity=Math.max(0,Math.min(1,1+clear/24));
+  }
+}
+// the zoom level at which the whole map fits the viewport -- also the zoom-out floor
+// How much further than "the whole map" the reader may pull back. A map cut to the shape of
+// the screen would otherwise sit edge to edge and the void it floats in would never show.
+var PULL_BACK = .7;
+function fitZoom(){
+  if(!DATA.map) return .05;
+  var r=vp.getBoundingClientRect();
+  // a fixed margin eats a phone screen, so the breathing room scales with the screen
+  var pad=Math.min(48, r.width*.07, r.height*.07);
+  return Math.min((r.width-pad)/DATA.map.w,(r.height-pad)/DATA.map.h);
+}
+/* The title artwork is sized for the open band between the header and the top of the map
+   as it stands when fully pulled back — that band, not the map, is what it has to fit into,
+   and it differs a lot between a wide monitor and a phone held upright. It is drawn in map
+   units, so the size is worked out for that zoom level and then simply zooms along. */
+function headerBottom(){ return document.querySelector('.hdr').getBoundingClientRect().bottom-vp.getBoundingClientRect().top; }
+// clear air between the header and the top of the map at zoom z, in screen pixels
+function titleRoom(z){
+  var r=vp.getBoundingClientRect();
+  return (r.height-DATA.map.h*z)/2 - headerBottom() - 8;
+}
+// Open on the whole map when the title already has room above it there — a phone held
+// upright usually does — and pull back only when it has not, as on a wide monitor.
+function startZoom(){
+  if(!DATA.titleImage) return fitZoom();
+  return titleRoom(fitZoom())>=60 ? fitZoom() : fitZoom()*PULL_BACK;
+}
+function sizeTitle(z){
+  var art=cv.querySelector('.title-art');
+  if(!art||!DATA.map) return;
+  var r=vp.getBoundingClientRect(), room=titleRoom(z);
+  art.hidden = room<28;                     // no clear air to hang it in: better not at all
+  if(art.hidden) return;
+  var h=Math.min(room*.86, 150);
+  art.style.height=(h/z)+'px';
+  art.style.maxWidth=(Math.min(r.width*.9, DATA.map.w*z*1.15)/z)+'px';
+  art.style.bottom='calc(100% + '+(Math.max(6,(room-h)/2)/z)+'px)';
+}
+window.addEventListener('resize',function(){ sizeTitle(startZoom()); apply(); });
+function fit(){ showAt(fitZoom()); }
+function showAt(z){
+  if(!DATA.map) return;
+  var r=vp.getBoundingClientRect();
+  V.z=z; V.x=(r.width-DATA.map.w*z)/2; V.y=(r.height-DATA.map.h*z)/2; apply();
+}
+function zoomAt(cx,cy,f){
+  var r=vp.getBoundingClientRect(), px=cx-r.left, py=cy-r.top;
+  var nz=Math.max(fitZoom()*PULL_BACK,Math.min(12,V.z*f)), k=nz/V.z;
+  V.x=px-(px-V.x)*k; V.y=py-(py-V.y)*k; V.z=nz; apply();
+}
+vp.addEventListener('wheel',function(e){ e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.15:1/1.15); },{passive:false});
+var pan=null, pts={}, pinch=null;
+// where a lone press began, so that a click on the map can be told from the end of a drag
+var tap=null;
+function down(){ var a=[],k; for(k in pts) a.push(pts[k]); return a; }
+function span(a){ var dx=a[0].x-a[1].x, dy=a[0].y-a[1].y; return Math.sqrt(dx*dx+dy*dy)||1; }
+function middle(a){ return {x:(a[0].x+a[1].x)/2, y:(a[0].y+a[1].y)/2}; }
+function grabFrom(p,id){ pan={id:id,sx:p.x,sy:p.y,ox:V.x,oy:V.y}; vp.classList.add('drag'); }
+
+vp.addEventListener('pointerdown',function(e){
+  // Every finger counts towards a pinch, including one that landed on a pin — on a small
+  // map that happens all the time. Only the panning is kept off the pins, so that a tap
+  // on one still opens its panel instead of dragging the map.
+  var onPin = !!e.target.closest('.pin');
+  if(!down().length) tap={x:e.clientX, y:e.clientY, moved:false};
+  pts[e.pointerId]={x:e.clientX,y:e.clientY,id:e.pointerId};
+  var a=down();
+  if(a.length>=2){
+    pan=null; pinch={d:span(a), m:middle(a)}; vp.classList.remove('drag');
+    if(tap) tap.moved=true;   // a pinch is never a click
+    return;
+  }
+  if(onPin) return;
+  vp.setPointerCapture(e.pointerId);
+  grabFrom(pts[e.pointerId], e.pointerId);
+});
+vp.addEventListener('pointermove',function(e){
+  var p=pts[e.pointerId];
+  if(!p) return;
+  p.x=e.clientX; p.y=e.clientY;
+  if(tap && !tap.moved && Math.abs(e.clientX-tap.x)+Math.abs(e.clientY-tap.y)>6) tap.moved=true;
+  var a=down();
+  if(pinch && a.length>=2){
+    // the map follows the fingers: it scales about the point between them and travels with it
+    var d=span(a), m=middle(a);
+    zoomAt(m.x, m.y, d/pinch.d);
+    V.x+=m.x-pinch.m.x; V.y+=m.y-pinch.m.y; apply();
+    pinch.d=d; pinch.m=m;
+    return;
+  }
+  if(!pan||e.pointerId!==pan.id) return;
+  V.x=pan.ox+(e.clientX-pan.sx); V.y=pan.oy+(e.clientY-pan.sy); apply();
+  // re-base on the clamped position, so dragging back from an edge responds at once
+  pan.sx=e.clientX; pan.sy=e.clientY; pan.ox=V.x; pan.oy=V.y;
+});
+function endPan(e){
+  delete pts[e.pointerId];
+  var a=down();
+  if(pinch){
+    if(a.length>=2){ pinch={d:span(a), m:middle(a)}; return; }
+    pinch=null;
+    // a finger is still down: it takes over the panning, or the map jumps on its next move
+    if(a.length===1) grabFrom(a[0], a[0].id);
+    else vp.classList.remove('drag');
+    return;
+  }
+  if(pan&&e.pointerId===pan.id){ pan=null; vp.classList.remove('drag'); }
+}
+vp.addEventListener('pointerup',endPan); vp.addEventListener('pointercancel',endPan);
+// A click on the bare map puts the panel away. Not the end of a drag or a pinch, though, and
+// not a click on a pin — that one opens a place of its own.
+vp.addEventListener('click',function(e){
+  if(e.target.closest('.pin') || (tap && tap.moved)) return;
+  if(sheet.classList.contains('open')) closeSheet();
+});
+document.getElementById('zi').onclick=function(){var r=vp.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1.3)};
+document.getElementById('zo').onclick=function(){var r=vp.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1/1.3)};
+document.getElementById('zf').onclick=fit;
+window.addEventListener('resize',apply);
+
+/* A region reaches the panel as an ordinary place, only flagged with isRegion.
+   Characters belong to places; a region is described, not peopled. */
+function regionPlace(f){
+  return {id:'reg-'+f.id, name:f.label, isRegion:true, factionId:f.id,
+    x:f.anchor.x, y:f.anchor.y, summary:f.summary||'', description:f.description||'',
+    image:f.image||null, characters:[]};
+}
+function hasArea(f){ return !!(f.area && f.area.length>2); }
+
+/* Where a point stands in the session being read: the last session up to this one that
+   moved it, and failing that the point's own coordinates. Regions never move. */
+function posAt(p, upto){
+  var x=p.x, y=p.y;
+  for(var i=0; i<=upto && i<DATA.sessions.length; i++){
+    var a=p.at && p.at[DATA.sessions[i].id];
+    if(a){ x=a.x; y=a.y; }
+  }
+  return {x:x, y:y};
+}
+function pinEl(p, big){
+  var b=document.createElement('button');
+  var at=big ? {x:p.x,y:p.y} : posAt(p, SESSION);
+  b.className='pin'+(big?' big':''); b.dataset.id=p.id;
+  if(!big) b.dataset.type=p.type;
+  b.style.left=(at.x*100)+'%'; b.style.top=(at.y*100)+'%';
+  b.style.setProperty('--pc',col(p));
+  // a region is only its lettering; everything else carries a knob with its icon
+  b.innerHTML=(big?'':'<span class="knob">'+ic(p.type)+'<\/span>')+'<span class="lbl"><\/span>';
+  b.querySelector('.lbl').textContent=p.name;
+  b.setAttribute('aria-label',p.name+', '+(big?'region':(TYPES[p.type]||'')));
+  b.onclick=function(){ openPlace(p); };
+  return b;
+}
+/* The frame is engraved onto the sheet rather than hung around it, so it never changes where
+   a point sits: everything is in map units and the points keep their own coordinates. */
+function frameHtml(w,h){
+  var u=Math.min(w,h), pad=u*.013, band=u*.021, sw=Math.max(.8,u*.0016);
+  var x0=pad+band, y0=pad+band, x1=w-pad-band, y1=h-pad-band;
+  function f(n){ return Math.round(n*10)/10; }
+  function rect(x,y,rw,rh){ return 'M'+f(x)+' '+f(y)+'h'+f(rw)+'v'+f(rh)+'h'+f(-rw)+'Z'; }
+  function loz(cx,cy,r){
+    return 'M'+f(cx)+' '+f(cy-r)+'L'+f(cx+r)+' '+f(cy)+'L'+f(cx)+' '+f(cy+r)+'L'+f(cx-r)+' '+f(cy)+'Z';
+  }
+  var outer=rect(pad,pad,w-2*pad,h-2*pad), inner=rect(x0,y0,x1-x0,y1-y0);
+  var mx=(x0+x1)/2, my=(y0+y1)/2, big=band*.62, small=band*.3;
+  var orn=loz(x0,y0,big)+loz(x1,y0,big)+loz(x1,y1,big)+loz(x0,y1,big)
+         +loz(mx,y0,small)+loz(mx,y1,small)+loz(x0,my,small)+loz(x1,my,small);
+  return '<svg class="frame" viewBox="0 0 '+w+' '+h+'" aria-hidden="true"'
+    +' style="box-shadow:inset 0 0 '+Math.round(u*.045)+'px rgba(6,10,11,.5)">'
+    +'<path class="band" fill-rule="evenodd" d="'+outer+inner+'"/>'
+    +'<path class="rule" stroke-width="'+f(sw*1.8)+'" d="'+outer+'"/>'
+    +'<path class="rule" stroke-width="'+f(sw)+'" d="'+inner+'"/>'
+    +'<path class="orn" d="'+orn+'"/></svg>';
+}
+function drawAreas(){
+  var list=DATA.factions.filter(hasArea);
+  if(!list.length) return;
+  var NS='http://www.w3.org/2000/svg';
+  var svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('class','areas');
+  svg.setAttribute('width',DATA.map.w); svg.setAttribute('height',DATA.map.h);
+  svg.setAttribute('viewBox','0 0 '+DATA.map.w+' '+DATA.map.h);
+  list.forEach(function(f){
+    var pg=document.createElementNS(NS,'polygon');
+    pg.setAttribute('points', f.area.map(function(pt){
+      return (pt[0]*DATA.map.w).toFixed(1)+','+(pt[1]*DATA.map.h).toFixed(1);
+    }).join(' '));
+    pg.addEventListener('pointerenter',function(e){ showRegion(f, e.pointerType!=='mouse'); });
+    pg.addEventListener('pointerleave',function(){ hideRegion(f); });
+    svg.appendChild(pg);
+  });
+  cv.appendChild(svg);
+}
+function drawMap(){
+  cv.innerHTML='';
+  if(!DATA.map) return;
+  cv.style.width=DATA.map.w+'px';
+  var im=new Image(); im.className='base'; im.src=DATA.map.src; im.alt=DATA.title;
+  cv.appendChild(im);
+  drawAreas();
+  if(DATA.frame) cv.insertAdjacentHTML('beforeend', frameHtml(DATA.map.w, DATA.map.h));
+  if(DATA.titleImage){
+    var art=new Image(); art.className='title-art'; art.src=DATA.titleImage; art.alt=DATA.title;
+    cv.appendChild(art);
+  }
+  clouds.mount(cv);
+  DATA.factions.forEach(function(f){ if(f.anchor) cv.appendChild(pinEl(regionPlace(f), true)); });
+  DATA.pois.forEach(function(p){ cv.appendChild(pinEl(p, false)); });
+}
+
+/* --- name of the region under the cursor --- */
+var rgn=document.getElementById('rgn'), rgnId=null, rgnTimer=null;
+function regionPin(id){ return cv.querySelector('.pin.big[data-id="reg-'+id+'"]'); }
+function showRegion(f, temporary){
+  clearTimeout(rgnTimer);
+  rgnId=f.id;
+  rgn.querySelector('i').style.background=f.color;
+  rgn.querySelector('span').textContent=f.label;
+  rgn.classList.add('on');
+  var pin=regionPin(f.id); if(pin) pin.setAttribute('data-hot','1');
+  // touch has no hover, so the label disappears on its own after a while
+  if(temporary) rgnTimer=setTimeout(function(){ hideRegion(f); }, 2400);
+}
+function hideRegion(f){
+  if(rgnId!==f.id) return;
+  rgnId=null; rgn.classList.remove('on');
+  var pin=regionPin(f.id); if(pin) pin.removeAttribute('data-hot');
+}
+function markCurrent(id){
+  var all=cv.querySelectorAll('.pin');
+  for(var i=0;i<all.length;i++) all[i].setAttribute('aria-current', all[i].dataset.id===id?'true':'false');
+}
+
+/* --- panel --- */
+var sheet=document.getElementById('sheet'), body=document.getElementById('shBody');
+var tabA=document.getElementById('tabArea'), tabC=document.getElementById('tabChars');
+var cur=null, curTab='area', ci=0;
+
+function prose(txt){
+  var wrap=document.createElement('div'); wrap.className='prose';
+  var parts=String(txt||'').split(/\n\s*\n/);
+  var any=false;
+  parts.forEach(function(s){
+    s=s.trim(); if(!s) return;
+    any=true;
+    var p=document.createElement('p'); p.textContent=s; wrap.appendChild(p);
+  });
+  if(!any){ var n=document.createElement('p'); n.className='none'; n.textContent='Nothing has been written about this place yet.'; wrap.appendChild(n); }
+  return wrap;
+}
+function openPlace(p){
+  cur=p; curTab='area'; ci=0;
+  var f=fac(p);
+  document.getElementById('shKicker').innerHTML='';
+  var k=document.getElementById('shKicker');
+  var dot=document.createElement('i'); dot.style.background=col(p); k.appendChild(dot);
+  k.appendChild(document.createTextNode(p.isRegion ? 'Region' : (TYPES[p.type]||'Place')+(f?' · '+f.label:'')));
+  document.getElementById('shTitle').textContent=p.name;
+  var sum=document.getElementById('shSum');
+  sum.textContent=p.summary||''; sum.style.display=p.summary?'':'none';
+  tabC.textContent = p.characters.length ? 'Characters ('+p.characters.length+')' : 'Characters';
+  tabC.disabled = p.characters.length===0;
+  tabC.style.opacity = p.characters.length===0 ? .4 : 1;
+  // a region has no characters, and a row with a single tab in it would only be clutter
+  tabA.parentNode.style.display = p.isRegion ? 'none' : '';
+  sheet.classList.add('open'); sheet.setAttribute('aria-hidden','false');
+  markCurrent(p.id);
+  paint();
+}
+function closeSheet(){
+  sheet.classList.remove('open'); sheet.setAttribute('aria-hidden','true');
+  cur=null; markCurrent('');
+}
+document.getElementById('shClose').onclick=closeSheet;
+tabA.onclick=function(){ curTab='area'; paint(); };
+tabC.onclick=function(){ if(cur&&cur.characters.length){ curTab='chars'; paint(); } };
+
+function paint(){
+  tabA.setAttribute('aria-selected', curTab==='area'?'true':'false');
+  tabC.setAttribute('aria-selected', curTab==='chars'?'true':'false');
+  body.innerHTML=''; body.scrollTop=0;
+  if(!cur) return;
+  if(curTab==='area'){
+    var pics=imagesOf(cur);
+    if(pics.length) body.appendChild(gallery(pics, cur.name));
+    body.appendChild(prose(cur.description));
+  } else {
+    body.appendChild(carousel(cur.characters));
+  }
+}
+/* A place may carry several pictures; a region, or a place saved before that, carries one. */
+function imagesOf(p){ return (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []); }
+/* One picture sits in the panel exactly as it always has. Several become a small gallery in a
+   frame shaped by the first of them, so the text below stays put while you page through, and
+   nothing is cut: a picture of another shape is shown whole inside the frame. */
+function gallery(list, name){
+  if(list.length===1){
+    var one=new Image(); one.className='area'; one.src=list[0]; one.alt=name; return one;
+  }
+  var root=document.createElement('div'); root.className='gal';
+  var win=document.createElement('div'); win.className='gal-win';
+  var track=document.createElement('div'); track.className='track';
+  list.forEach(function(src,i){
+    var s=document.createElement('div'); s.className='gal-slide';
+    var im=new Image(); im.src=src; im.alt=name+', picture '+(i+1)+' of '+list.length;
+    if(i===0) im.onload=function(){
+      if(im.naturalWidth) win.style.aspectRatio=im.naturalWidth+' / '+im.naturalHeight;
+    };
+    s.appendChild(im); track.appendChild(s);
+  });
+  win.appendChild(track); root.appendChild(win);
+
+  var nav=document.createElement('div'); nav.className='car-nav';
+  var prev=document.createElement('button'); prev.innerHTML='&#8249;'; prev.setAttribute('aria-label','Previous picture');
+  var next=document.createElement('button'); next.innerHTML='&#8250;'; next.setAttribute('aria-label','Next picture');
+  var dots=document.createElement('div'); dots.className='dots';
+  var at=0;
+  list.forEach(function(src,i){
+    var d=document.createElement('button'); d.setAttribute('aria-label','Picture '+(i+1));
+    d.onclick=function(){ at=i; upd(); }; dots.appendChild(d);
+  });
+  nav.appendChild(prev); nav.appendChild(dots); nav.appendChild(next);
+  root.appendChild(nav);
+  function upd(){
+    at=Math.max(0,Math.min(list.length-1,at));
+    track.style.transform='translateX('+(-at*100)+'%)';
+    prev.disabled=at===0; next.disabled=at===list.length-1;
+    for(var i=0;i<dots.children.length;i++) dots.children[i].setAttribute('aria-current', i===at?'true':'false');
+  }
+  prev.onclick=function(){ at--; upd(); };
+  next.onclick=function(){ at++; upd(); };
+  var sw=null;
+  win.addEventListener('pointerdown',function(e){ sw={x:e.clientX}; });
+  win.addEventListener('pointerup',function(e){
+    if(!sw) return;
+    var d=e.clientX-sw.x;
+    if(Math.abs(d)>45){ at += d<0?1:-1; upd(); }
+    sw=null;
+  });
+  upd();
+  return root;
+}
+function carousel(list){
+  var root=document.createElement('div'); root.className='car';
+  var win=document.createElement('div'); win.className='car-win';
+  var track=document.createElement('div'); track.className='track';
+  list.forEach(function(c){
+    var s=document.createElement('div'); s.className='slide';
+    if(c.image){ var im=new Image(); im.src=c.image; im.alt=c.name; s.appendChild(im); }
+    else { var ph=document.createElement('div'); ph.className='ph'; ph.textContent='no portrait'; s.appendChild(ph); }
+    var h=document.createElement('h4'); h.textContent=c.name||'Unnamed'; s.appendChild(h);
+    if(c.role){ var r=document.createElement('p'); r.className='role'; r.textContent=c.role; s.appendChild(r); }
+    s.appendChild(prose(c.description));
+    track.appendChild(s);
+  });
+  win.appendChild(track); root.appendChild(win);
+
+  var nav=document.createElement('div'); nav.className='car-nav';
+  var prev=document.createElement('button'); prev.innerHTML='&#8249;'; prev.setAttribute('aria-label','Previous character');
+  var next=document.createElement('button'); next.innerHTML='&#8250;'; next.setAttribute('aria-label','Next character');
+  var dots=document.createElement('div'); dots.className='dots';
+  list.forEach(function(c,i){
+    var d=document.createElement('button'); d.setAttribute('aria-label',(i+1)+'. '+(c.name||''));
+    d.onclick=function(){ ci=i; upd(); }; dots.appendChild(d);
+  });
+  nav.appendChild(prev); nav.appendChild(dots); nav.appendChild(next);
+  if(list.length>1) root.appendChild(nav);
+
+  function upd(){
+    ci=Math.max(0,Math.min(list.length-1,ci));
+    track.style.transform='translateX('+(-ci*100)+'%)';
+    prev.disabled=ci===0; next.disabled=ci===list.length-1;
+    var ds=dots.children;
+    for(var i=0;i<ds.length;i++) ds[i].setAttribute('aria-current', i===ci?'true':'false');
+  }
+  prev.onclick=function(){ ci--; upd(); };
+  next.onclick=function(){ ci++; upd(); };
+  var sw=null;
+  win.addEventListener('pointerdown',function(e){ sw={x:e.clientX}; });
+  win.addEventListener('pointerup',function(e){
+    if(!sw) return;
+    var d=e.clientX-sw.x;
+    if(Math.abs(d)>45){ ci += d<0?1:-1; upd(); }
+    sw=null;
+  });
+  root.carUpd=upd;
+  setTimeout(upd,0);
+  return root;
+}
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){ closeSheet(); return; }
+  if(!cur||curTab!=='chars') return;
+  var c=body.querySelector('.car');
+  if(!c||!c.carUpd) return;
+  if(e.key==='ArrowRight'){ ci++; c.carUpd(); }
+  if(e.key==='ArrowLeft'){ ci--; c.carUpd(); }
+});
+
+/* --- legend + about the atlas --- */
+(function(){
+  var used={};
+  DATA.pois.forEach(function(p){ if(p.factionId) used[p.factionId]=1; });
+  DATA.factions.forEach(function(f){ if(hasArea(f)||f.anchor) used[f.id]=1; });
+  var lg=document.getElementById('legend');
+  DATA.factions.forEach(function(f){
+    if(!used[f.id]) return;
+    var s=document.createElement('span');
+    var i=document.createElement('i'); i.style.background=f.color;
+    s.appendChild(i); s.appendChild(document.createTextNode(f.label));
+    lg.appendChild(s);
+  });
+  if(DATA.intro){
+    var b=document.getElementById('aboutBtn'); b.hidden=false;
+    b.onclick=function(){
+      var ov=document.createElement('div'); ov.className='about';
+      var box=document.createElement('div'); box.className='box';
+      var h=document.createElement('h3'); h.textContent=DATA.title; box.appendChild(h);
+      box.appendChild(prose(DATA.intro));
+      var cl=document.createElement('button'); cl.className='ghost'; cl.textContent='Close';
+      cl.style.marginTop='18px'; cl.style.color='#241c11'; cl.style.borderColor='rgba(60,44,20,.4)';
+      cl.onclick=function(){ ov.remove(); };
+      box.appendChild(cl); ov.appendChild(box);
+      ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+      document.body.appendChild(ov);
+    };
+  }
+})();
+
+/* --- magic under the map --- */
+/* Glowing motes on a canvas behind the map. No library: a sprite drawn up front
+   and requestAnimationFrame are enough, and the exported map stays one offline file. */
+(function(){
+  var c=document.getElementById('magic');
+  if(!c||!c.getContext) return;
+  var ctx=c.getContext('2d');
+  var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var css=getComputedStyle(document.documentElement);
+  var warm=css.getPropertyValue('--mote-warm').trim()||'#e8bd72';
+  var cool=css.getPropertyValue('--mote-cool').trim()||'#8fd6c4';
+  var W=0,H=0,motes=[],last=0;
+
+  // one glowing dot per color, drawn once; a gradient per mote per frame would be expensive
+  function sprite(hex){
+    var s=document.createElement('canvas'); s.width=s.height=64;
+    var g=s.getContext('2d'), gr=g.createRadialGradient(32,32,0,32,32,32);
+    gr.addColorStop(0,rgba(hex,1)); gr.addColorStop(.12,rgba(hex,.9));
+    gr.addColorStop(.35,rgba(hex,.25)); gr.addColorStop(1,rgba(hex,0));
+    g.fillStyle=gr; g.fillRect(0,0,64,64);
+    return s;
+  }
+  var glowWarm=sprite(warm), glowCool=sprite(cool);
+
+  function mote(){
+    var d=.25+Math.random()*.75;   // depth: nearer motes are bigger, faster and move more with the map
+    return {x:Math.random()*W, y:Math.random()*H, d:d,
+      r:(5+Math.random()*9)*d, vy:(5+Math.random()*12)*d,
+      sw:5+Math.random()*16, ph:Math.random()*6.28, fr:.15+Math.random()*.45,
+      tw:Math.random()*6.28, img:Math.random()<.7?glowWarm:glowCool};
+  }
+  function size(){
+    var dpr=Math.min(window.devicePixelRatio||1,2);
+    W=vp.clientWidth; H=vp.clientHeight;
+    c.width=Math.round(W*dpr); c.height=Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    // mote count follows the area, so a phone does not get the same load as a large monitor
+    var n=Math.round(Math.max(24,Math.min(90,W*H/16000)));
+    while(motes.length<n) motes.push(mote());
+    motes.length=n;
+  }
+  function wrap(v,m){ return ((v%m)+m)%m; }
+  function frame(t){
+    var dt=last?Math.min(.05,(t-last)/1000):0; last=t;
+    var spanX=W+60, spanY=H+60;
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation='lighter';
+    for(var i=0;i<motes.length;i++){
+      var m=motes[i];
+      m.y=wrap(m.y-m.vy*dt,spanY); m.ph+=m.fr*dt; m.tw+=(.8+m.d)*dt;
+      // gentle parallax: when the map pans, distant motes move less than near ones
+      var x=wrap(m.x+Math.sin(m.ph)*m.sw+V.x*.05*m.d,spanX)-30;
+      var y=wrap(m.y+V.y*.05*m.d,spanY)-30;
+      // a mote lights up at the bottom edge and fades at the top — the wrap is never visible
+      var edge=Math.max(0,Math.min(1,(H+30-y)/120,(y+30)/140));
+      ctx.globalAlpha=(.3+.7*(.5+.5*Math.sin(m.tw)))*(.35+.65*m.d)*edge;
+      ctx.drawImage(m.img,x-m.r,y-m.r,m.r*2,m.r*2);
+    }
+    ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+    if(!calm && !document.hidden) requestAnimationFrame(frame);
+  }
+  size();
+  window.addEventListener('resize',function(){ size(); if(calm){ last=0; frame(0); } });
+  // a hidden tab draws nothing; on a phone that is battery worth keeping
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden && !calm){ last=0; requestAnimationFrame(frame); }
+  });
+  requestAnimationFrame(frame);
+})();
+
+/* --- clouds over the map --- */
+/* A canvas inside the map layer: the clouds pan and zoom with the terrain, and the edge of
+   the canvas keeps them over the image. They belong to the overview - move closer and they go. */
+var clouds=(function(){
+  var cn=null, cx=null, list=[], W=0, H=0, pad=0, last=0, on=false, shown=-1;
+  // many drawn maps carry a painted frame: the clouds stay off it, on the land itself
+  var INSET=.07;
+  var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var tint=(getComputedStyle(document.documentElement).getPropertyValue('--cloud')||'').trim()||'#eef4f0';
+
+  // A cloud is a row of circles baked into a sprite of its own: one drawImage per frame.
+  // The circles go into a single path, because overlapping translucent puffs would leave
+  // a brighter disc at every crossing. The path itself is drawn off to the side - only its
+  // shadow lands on the sprite, which is how the silhouette gets its soft rim.
+  function bake(){
+    var w=340, h=200, s=document.createElement('canvas'); s.width=w; s.height=h;
+    var g=s.getContext('2d'), n=6+Math.floor(Math.random()*3), i, r, u, x, y;
+    var blur=24;
+    // The soft rim spreads `blur` past the shape, and whatever falls outside the sprite is
+    // cut off square — which is what a cloud sliced down one side looks like. So the shape
+    // itself stays a clear margin away from every edge of its canvas.
+    var pad=blur+6, iw=w-pad*2, base=h-pad-52, off=w+90;
+    g.shadowColor=rgba(tint,1); g.shadowBlur=blur; g.shadowOffsetX=off;
+    g.fillStyle='#000';
+    g.beginPath();
+    for(i=0;i<n;i++){
+      u=n>1?i/(n-1):.5;
+      // the middle of a cloud towers, the ends taper down to the same flat base
+      r=(17+Math.random()*7)+(38+Math.random()*13)*Math.sin(u*3.14);
+      // the base is level, but not ruled: a perfectly straight underside looks cut out
+      x=pad+r+(iw-r*2)*u; y=base-r*.66+(Math.random()-.5)*11;
+      g.moveTo(x-off+r,y); g.arc(x-off,y,r,0,6.2832);
+    }
+    for(i=0;i<2;i++){   // a couple heaped into the crest, so the outline is not a dome
+      r=20+Math.random()*13;
+      x=w*.5+(Math.random()-.5)*iw*.26; y=base-46-Math.random()*22;
+      g.moveTo(x-off+r,y); g.arc(x-off,y,r,0,6.2832);
+    }
+    g.fill();
+    g.shadowColor='transparent'; g.shadowBlur=0; g.shadowOffsetX=0;
+    // light from above: the crown keeps the tint, the underside sinks into shade
+    g.globalCompositeOperation='source-atop';
+    var lg=g.createLinearGradient(0,base-h*.55,0,base+8);
+    lg.addColorStop(0,'rgba(255,255,255,0)'); lg.addColorStop(1,'rgba(26,42,44,.38)');
+    g.fillStyle=lg; g.fillRect(0,0,w,h);
+    g.globalCompositeOperation='source-over';
+    return s;
+  }
+  function build(){
+    var art=[bake(),bake(),bake(),bake()], i;
+    // the count follows the map area, so a small sketch does not end up overcast
+    var n=Math.round(Math.max(3,Math.min(17,(W-pad*2)*(H-pad*2)/30000)));
+    list=[];
+    var iw=W-pad*2, ih=H-pad*2;
+    for(i=0;i<n;i++){
+      var im=art[Math.floor(Math.random()*art.length)], cw=iw*(.17+Math.random()*.21);
+      list.push({img:im, w:cw, h:cw*im.height/im.width,
+        x:pad+Math.random()*(iw+cw)-cw, y:0, v:(4+Math.random()*8)*(iw/1200),
+        a:.2+Math.random()*.22, ph:Math.random()*6.28, bob:3+Math.random()*8});
+    }
+    for(i=0;i<list.length;i++){
+      var c=list[i];
+      c.y=pad+c.bob+Math.random()*Math.max(1,ih-c.h-c.bob*2);
+    }
+  }
+  function frame(t){
+    var dt=last?Math.min(.05,(t-last)/1000):0; last=t;
+    cx.clearRect(0,0,W,H);
+    for(var i=0;i<list.length;i++){
+      var c=list[i];
+      c.x+=c.v*dt; c.ph+=.3*dt;
+      if(c.x>W-pad) c.x=pad-c.w;   // the wind is westerly, so it comes back in on the left
+      // the fade counts from the edges of the cloud, not its middle, so nothing of it
+      // is left by the time it reaches the inset - a painted frame stays clear
+      var iw=W-pad*2, m=Math.min(c.w*.32, iw*.12);
+      cx.globalAlpha=c.a*Math.max(0,Math.min(1,(c.x-pad)/m,(pad+iw-c.x-c.w)/m));
+      cx.drawImage(c.img, c.x, c.y+Math.sin(c.ph)*c.bob, c.w, c.h);
+    }
+    cx.globalAlpha=1;
+    if(on&&!calm) requestAnimationFrame(frame);
+  }
+  function mount(parent){
+    if(!DATA.map) return;
+    cn=document.createElement('canvas');
+    if(!cn.getContext){ cn=null; return; }
+    cn.className='clouds'; cn.setAttribute('aria-hidden','true');
+    // The sprites are soft, so a reduced backing store is enough and a large map stays cheap.
+    // A phone never shows the map at more than a few hundred points across, so it gets less.
+    var room=Math.max(480, Math.round(Math.min(screen.width,screen.height)*2));
+    W=Math.min(1200, DATA.map.w, room); H=Math.max(1,Math.round(W*DATA.map.h/DATA.map.w));
+    pad=Math.round(Math.min(W,H)*INSET);
+    cn.width=W; cn.height=H; cx=cn.getContext('2d');
+    build(); parent.appendChild(cn); frame(0);
+  }
+  // full at the overview and gone soon after: from up close a cloud is only a blurred sprite
+  function zoom(t){
+    if(!cn) return;
+    var v=t<=1.1?1:(t>=1.7?0:(1.7-t)/.6);
+    v=Math.round(v*100)/100;
+    if(v===shown) return;
+    shown=v; run(v>0);
+  }
+  function run(want){
+    cn.style.opacity=shown;
+    // nothing to draw for a tab nobody is looking at — on a phone that is battery
+    if(want && !document.hidden){ if(!on){ on=true; last=0; requestAnimationFrame(frame); } }
+    else on=false;
+  }
+  document.addEventListener('visibilitychange',function(){ if(cn) run(shown>0); });
+  return {mount:mount, zoom:zoom};
+})();
+
+/* --- sessions --- */
+/* The reader lands in the latest session, the state of the world as it stands, and can walk
+   back through the campaign. Only the points move; the map, the regions and every word
+   written about a place are the same in all of them. */
+function drawSessions(){
+  var bar=document.getElementById('sess');
+  if(DATA.sessions.length<2) return;      // one session is no timeline
+  bar.hidden=false;
+  function paint(){
+    document.getElementById('sessName').textContent=DATA.sessions[SESSION].label;
+    document.getElementById('sessCount').textContent=(SESSION+1)+' / '+DATA.sessions.length;
+    document.getElementById('sessPrev').disabled=SESSION===0;
+    document.getElementById('sessNext').disabled=SESSION===DATA.sessions.length-1;
+    DATA.pois.forEach(function(p){
+      var el=cv.querySelector('.pin:not(.big)[data-id="'+p.id+'"]');
+      if(!el) return;
+      var at=posAt(p, SESSION);
+      el.style.left=(at.x*100)+'%'; el.style.top=(at.y*100)+'%';
+    });
+  }
+  function go(i){
+    SESSION=Math.max(0,Math.min(DATA.sessions.length-1,i));
+    paint();
+  }
+  document.getElementById('sessPrev').onclick=function(){ go(SESSION-1); };
+  document.getElementById('sessNext').onclick=function(){ go(SESSION+1); };
+  paint();
+}
+
+drawMap(); drawSessions();
+// opens on the whole map, or pulled back like a cover when that is what gives the title room
+var z0=startZoom();
+sizeTitle(z0);
+showAt(z0);
+</script>
+</body>
+</html>
