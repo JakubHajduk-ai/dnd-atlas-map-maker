@@ -10,7 +10,7 @@ the file, so it needs no assets and no server.
 ## Quick start
 
 ```bash
-git clone https://github.com/JakubHajduk-ai/dnd-atlas-map-maker.git atlas
+git clone https://github.com/hajduk-j/dnd-atlas-map-maker.git atlas
 cd atlas
 node build.mjs          # produces index.html
 ```
@@ -34,7 +34,7 @@ or GitHub never sees your maps.
 - **Back up your map yourself.** Use **Save project** (`.atlas.json`) or **Export site**
   (`index.html`) regularly, and use **Open project** to carry on later or on another computer.
 
-Online version: https://jakubhajduk-ai.github.io/dnd-atlas-map-maker/ (the same editor, no
+Online version: https://hajduk-j.github.io/dnd-atlas-map-maker/ (the same editor, no
 download needed).
 
 ## How a map is made
