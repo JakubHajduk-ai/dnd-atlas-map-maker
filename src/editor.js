@@ -42,6 +42,7 @@ function blank(){
     v:1,
     title:"Untitled atlas",
     subtitle:"",
+    tabTitle:"",                    // browser tab and link-preview title; empty means the atlas name
     intro:"",
     map:null,                       // {src,w,h}
     frame:true,                     // engrave a border onto the sheet (off for maps that have one)
@@ -863,6 +864,8 @@ document.getElementById("btnSettings").onclick = function(){
     sheet.appendChild(el("p","sub","This appears in the header of the exported site."));
     sheet.appendChild(field("Atlas name", input(S.title, function(v){ S.title=v; persist(); })));
     sheet.appendChild(field("Subtitle", input(S.subtitle, function(v){ S.subtitle=v; persist(); }, "e.g. The Confluence, winter 1247")));
+    sheet.appendChild(field("Tab and link title", input(S.tabTitle, function(v){ S.tabTitle=v; persist(); }, S.title || "Same as the atlas name")));
+    sheet.appendChild(el("p","sub","The text on the browser tab, and the headline of the preview when the link is shared in a chat. Leave it empty to use the atlas name. The subtitle becomes the short description under it."));
     sheet.appendChild(field("Intro text", textarea(S.intro, function(v){ S.intro=v; persist(); }, "A short intro for the visitor. Optional.", 4)));
 
     var art = imagePicker(S.titleImage, function(v){ S.titleImage=v; persist(); },
@@ -1057,6 +1060,7 @@ function normalize(d){
   var b = blank();
   b.title = d.title || b.title;
   b.subtitle = d.subtitle || "";
+  b.tabTitle = d.tabTitle || "";
   b.intro = d.intro || "";
   b.map = d.map || null;
   b.frame = d.frame !== false;      // projects from before the frame existed get one
@@ -1146,7 +1150,15 @@ function buildSite(){
   // opened here again. Which part of it the map draws is decided in the viewer: hidden
   // points, and the content of a region without a big pin, never reach the page.
   var json = JSON.stringify(S).replace(/</g,"\\u003c").replace(/\u2028/g,"\\u2028").replace(/\u2029/g,"\\u2029");
+  var pageTitle = (S.tabTitle||"").trim() || S.title || "Atlas";
+  // what a chat app or a search result shows when the link is shared
+  var meta = '<meta property="og:type" content="website">\n<meta property="og:title" content="'+esc(pageTitle)+'">';
+  if(S.subtitle){
+    meta += '\n<meta name="description" content="'+esc(S.subtitle)+'">\n<meta property="og:description" content="'+esc(S.subtitle)+'">';
+  }
   return VIEWER
+    .split("__PAGETITLE__").join(esc(pageTitle))
+    .split("__META__").join(meta)
     .split("__TITLE__").join(esc(S.title||"Atlas"))
     .split("__SUBTITLE__").join(esc(S.subtitle||""))
     .replace("__ICONS__", JSON.stringify(ICONS))

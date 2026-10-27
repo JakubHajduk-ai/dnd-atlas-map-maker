@@ -168,6 +168,7 @@ One project is one JSON object:
   "v": 1,
   "title": "The Confluence",
   "subtitle": "winter 1247",
+  "tabTitle": "The Confluence campaign",  // optional: browser tab and link-preview title; defaults to `title`
   "intro": "Optional intro text.",
   "map": { "src": "data:image/jpeg;base64,…", "w": 2600, "h": 1700 },
   "frame": true,                  // engrave a border onto the sheet; absent counts as true
