@@ -86,6 +86,13 @@ no room above it — a wide map on a wide monitor — the atlas opens pulled bac
 title is the first thing a reader sees. On a screen with no room even then (a phone held
 sideways), it is left out. The editor itself does not draw it; the preview does.
 
+### The overview
+
+Pulled all the way back, the finished map shows drifting clouds and the title artwork, and the
+places and region names are not drawn. As the reader zooms in, the clouds and the title leave and
+they fade in at the same moment, so the screen is never both at once. A hint at the foot of the
+map says **Zoom in to reveal places** while they are out.
+
 ### Sessions
 
 An atlas can be read at several moments of the campaign. **Map settings → Sessions** starts a
