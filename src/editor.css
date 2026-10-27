@@ -136,6 +136,7 @@ button{cursor:pointer}
 
 .reg-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .reg-row input[type=color]{width:34px;height:30px;padding:2px;background:var(--ink-900);border:1px solid var(--line);border-radius:var(--r)}
+.recap-inp{margin:-2px 0 14px;font-size:14px}
 .reg-row .tag{font-size:12px;color:var(--muted);white-space:nowrap}
 
 /* which moment of the campaign is on the table: dragging a point writes into this session */
@@ -251,6 +252,18 @@ textarea.inp{resize:vertical;min-height:84px;line-height:1.6}
 .sheet-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:20px}
 .preview-frame{width:100%;height:min(70vh,640px);border:1px solid var(--line-strong);border-radius:var(--r);background:#000}
 .sheet.wide{width:min(1100px,100%)}
+
+/* quick tour */
+.sheet.tour{width:min(520px,100%);padding:26px 28px 22px}
+.tour-step{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:6px}
+.sheet.tour h3{font-size:24px;margin-bottom:8px}
+.tour-lead{margin:0 0 12px;color:var(--text);line-height:1.6}
+.tour-list{margin:0;padding:0 0 0 18px;color:var(--linen-2);display:flex;flex-direction:column;gap:7px;line-height:1.5}
+.tour-list li::marker{color:var(--brass)}
+.tour-dots{display:flex;gap:7px;justify-content:center;margin-top:20px}
+.tour-dots button{width:8px;height:8px;padding:0;border-radius:50%;border:none;background:var(--line-strong)}
+.tour-dots button.on{background:var(--brass-lit);transform:scale(1.35)}
+.sheet.tour .sheet-actions{margin-top:16px}
 
 .toast{
   position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;

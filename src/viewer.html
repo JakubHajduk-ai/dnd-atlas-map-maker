@@ -16,6 +16,9 @@
   --display:"Eczar",Georgia,serif; --body:"Vollkorn",Georgia,serif;
   --mote-warm:#e8bd72; --mote-cool:#8fd6c4; --cloud:#eef4f0;
   --frame-line:rgba(198,157,96,.62); --frame-band:rgba(12,17,15,.26);
+  --panel-w:430px;
+  --vellum:#e3d3a8; --vellum-2:#c9b07a; --stain:rgba(112,72,24,.20); --burn:rgba(86,48,14,.55);
+  --sepia-ink:#33220f; --sepia-rule:rgba(86,58,24,.5); --rubric:#7d2a14;
   --aura-warm:rgba(220,174,106,.08); --aura-cool:rgba(111,195,178,.10);
 }
 :root:not([data-theme="light"]){ }
@@ -29,7 +32,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 :focus-visible{outline:2px solid var(--brass-lit);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation:none!important;transition:none!important} }
 
-.hdr{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:16px;
+.hdr{position:fixed;top:0;left:0;right:var(--panel-w);z-index:20;display:flex;align-items:center;gap:16px;
   padding:11px 18px;background:linear-gradient(rgba(8,12,14,.94),rgba(8,12,14,.72),transparent);
   pointer-events:none}
 .hdr > *{pointer-events:auto}
@@ -42,7 +45,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .ghost{background:transparent;border:1px solid var(--line-2);border-radius:3px;padding:6px 12px;color:var(--linen)}
 .ghost:hover{background:rgba(180,135,74,.14)}
 
-.vp{position:absolute;inset:0;overflow:hidden;cursor:grab;touch-action:none;
+/* on wide screens the panel is a fixed column and the map gets the rest */
+.vp{position:absolute;top:0;bottom:0;left:0;right:var(--panel-w);overflow:hidden;cursor:grab;touch-action:none;
   background:radial-gradient(ellipse at 50% 42%,#15201e,#080c0e 72%)}
 .vp.drag{cursor:grabbing}
 /* magic under the map: a slowly breathing glow and rising motes (canvas #magic); they never reach over the map */
@@ -121,9 +125,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .rgn i{width:9px;height:9px;border-radius:50%;display:block;flex:0 0 auto}
 
 /* the moment of the campaign being read; only there when the atlas has more than one */
-.sess{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:20;
-  display:flex;align-items:center;gap:2px;max-width:min(420px,calc(100% - 150px));
+.sess{position:fixed;left:calc((100% - var(--panel-w)) / 2);bottom:16px;transform:translateX(-50%);z-index:20;
+  display:flex;align-items:center;gap:2px;max-width:min(420px,calc(100% - var(--panel-w) - 150px));
   background:rgba(8,12,14,.88);border:1px solid var(--line-2);border-radius:3px;padding:3px 4px}
+.sess[hidden]{display:none}
 .sess button{width:30px;height:30px;background:none;border:none;border-radius:2px;
   color:var(--linen);font-size:17px;line-height:1}
 .sess button:hover:not(:disabled){background:rgba(180,135,74,.16)}
@@ -133,26 +138,79 @@ button{font:inherit;color:inherit;cursor:pointer}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sess-count{display:block;font-size:11px;color:var(--muted);letter-spacing:.06em}
 
-.zoom{position:fixed;right:16px;bottom:16px;z-index:20;display:flex;flex-direction:column;gap:5px}
+.zoom{position:fixed;right:calc(var(--panel-w) + 16px);bottom:16px;z-index:20;display:flex;flex-direction:column;gap:5px}
 .zoom button{width:36px;height:36px;background:rgba(8,12,14,.88);border:1px solid var(--line-2);
   border-radius:3px;color:var(--linen);font-size:18px;line-height:1}
 .zoom button:hover{background:#1b262b}
 
 /* ---------- parchment panel ---------- */
-.sheet{position:fixed;top:0;right:0;bottom:0;width:min(430px,100%);z-index:30;display:flex;flex-direction:column;
+.sheet{position:fixed;top:0;right:0;bottom:0;width:var(--panel-w);z-index:30;display:flex;flex-direction:column;
   background:
     radial-gradient(120% 90% at 8% 0%,rgba(255,250,235,.55),transparent 60%),
     radial-gradient(100% 80% at 100% 100%,rgba(120,92,48,.30),transparent 62%),
     linear-gradient(var(--paper),var(--paper-2));
   color:var(--paper-ink);border-left:1px solid rgba(60,44,20,.5);
-  box-shadow:-18px 0 50px rgba(0,0,0,.5);
-  transform:translateX(100%);transition:transform .28s cubic-bezier(.22,.7,.3,1)}
-.sheet.open{transform:none}
+  box-shadow:-18px 0 50px rgba(0,0,0,.5)}
 .sheet::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.35;mix-blend-mode:multiply;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
+/* An old map sheet: stained vellum, burnt edges, a faint fold, and a ruled border drawn inside. */
+.sheet{
+  background:
+    linear-gradient(transparent calc(34% - 1px),rgba(80,50,18,.13) 34%,rgba(255,244,214,.22) calc(34% + 1px),transparent calc(34% + 3px)),
+    radial-gradient(40% 14% at 82% 22%,var(--stain),transparent 70%),
+    radial-gradient(34% 18% at 14% 58%,rgba(112,72,24,.16),transparent 70%),
+    radial-gradient(46% 16% at 70% 86%,var(--stain),transparent 70%),
+    radial-gradient(120% 90% at 10% 0%,rgba(255,246,214,.6),transparent 60%),
+    linear-gradient(var(--vellum),var(--vellum-2));
+  color:var(--sepia-ink);border-left:1px solid rgba(60,34,10,.7)}
+.sheet::before{opacity:.5}
+.sheet::after{/* burnt edges and a double neatline */content:"";position:absolute;inset:0;pointer-events:none;
+  box-shadow:inset 0 0 70px var(--burn),inset 0 0 14px rgba(60,30,8,.55);
+  outline:3px double var(--sepia-rule);outline-offset:-10px}
 .sheet > *{position:relative}
-.sh-head{padding:20px 22px 0;flex:0 0 auto}
-.sh-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border:1px solid rgba(60,44,20,.35);
+.recap-btn{display:none}
+/* the switch between the session recap and the place: two engraved plates, the chosen one inked in */
+.sh-mode{display:flex;margin:24px 28px 0;border:1px solid var(--sepia-rule);border-radius:2px;
+  background:rgba(255,246,214,.28);box-shadow:inset 0 1px 3px rgba(60,34,10,.18)}
+.sh-mode[hidden]{display:none}
+.sh-mode button{flex:1;background:none;border:none;border-radius:1px;padding:7px 10px;
+  font-family:var(--display);font-weight:600;font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:#6b5330;transition:background .18s,color .18s}
+.sh-mode button + button{border-left:1px solid var(--sepia-rule)}
+.sh-mode button:hover{color:var(--sepia-ink);background:rgba(255,246,214,.35)}
+.sh-mode button[aria-selected="true"]{background:var(--sepia-ink);color:var(--vellum);
+  box-shadow:inset 0 0 0 1px rgba(255,246,214,.18)}
+.sh-mode:not([hidden]) + .sh-head{padding-top:18px}
+.sheet.mode-recap .sh-tabs button{display:none}
+.sheet.mode-recap .sh-tabs{height:0;margin:16px 0 0}
+.sh-kicker{text-transform:uppercase;letter-spacing:.2em;font-size:11px;color:var(--rubric)}
+.sh-kicker i{border:1px solid rgba(40,20,5,.5)}
+.sh-title{font-size:26px;letter-spacing:.05em;text-transform:uppercase;line-height:1.15;color:var(--sepia-ink)}
+.sh-sum{color:#5b4526}
+.sh-tabs{border-bottom:none;position:relative;margin-bottom:6px}
+.sh-tabs::after{content:"";position:absolute;left:0;right:0;bottom:-8px;height:7px;
+  background:
+    linear-gradient(var(--sepia-rule),var(--sepia-rule)) left 0 top 3px / calc(50% - 9px) 1px no-repeat,
+    linear-gradient(var(--sepia-rule),var(--sepia-rule)) right 0 top 3px / calc(50% - 9px) 1px no-repeat,
+    linear-gradient(45deg,transparent 40%,var(--sepia-rule) 41% 59%,transparent 60%) center / 7px 7px no-repeat}
+.sh-tabs button{text-transform:uppercase;letter-spacing:.14em;font-size:12.5px;color:#6b5330}
+.sh-tabs button[aria-selected="true"]{color:var(--sepia-ink);border-bottom-color:var(--rubric)}
+.prose p{line-height:1.7;color:var(--sepia-ink)}
+/* the first letter of a text is an illuminated capital, in the rubric red of old manuscripts */
+.prose p:first-child:not(.none){display:flow-root}
+.prose p:first-child:not(.none)::first-letter{font-family:var(--display);font-weight:700;color:var(--rubric);
+  float:left;font-size:3.1em;line-height:.82;padding:.06em .09em 0 0}
+.sh-body img.area,.gal-win,.slide img{border-color:rgba(60,34,10,.55);filter:sepia(.32) saturate(.88) contrast(1.02);
+  box-shadow:0 1px 0 rgba(255,244,214,.5),0 3px 8px rgba(50,28,8,.35)}
+.slide h4{text-transform:uppercase;letter-spacing:.07em;font-size:18px}
+.hint,.none,.slide .role,.car-count small{color:#6b5330}
+.hint{border-top-color:var(--sepia-rule)}
+.car .car-nav{background:linear-gradient(rgba(227,211,168,.96) 80%,transparent)}
+.sheet .dots button[aria-current="true"],.dots button[aria-current="true"]{background:var(--rubric)}
+.sh-body{scrollbar-color:rgba(100,64,22,.6) transparent}
+.sh-body::-webkit-scrollbar-thumb{background:rgba(100,64,22,.5);background-clip:content-box}
+.sh-head{padding:26px 28px 0;flex:0 0 auto}
+.sh-close{display:none;position:absolute;top:14px;right:14px;width:30px;height:30px;border:1px solid rgba(60,44,20,.35);
   background:rgba(255,250,235,.4);border-radius:2px;color:var(--paper-ink);font-size:16px;line-height:1;z-index:2}
 .sh-close:hover{background:rgba(255,250,235,.8)}
 .sh-kicker{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--paper-mute);margin-bottom:2px}
@@ -163,7 +221,15 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sh-tabs button{background:none;border:none;padding:0 0 9px;font-family:var(--display);font-weight:600;
   font-size:15px;color:var(--paper-mute);border-bottom:2px solid transparent;margin-bottom:-1px}
 .sh-tabs button[aria-selected="true"]{color:var(--paper-ink);border-bottom-color:#7a5a24}
-.sh-body{flex:1;overflow-y:auto;padding:18px 22px 26px}
+.sh-body{flex:1;overflow-y:auto;padding:24px 28px 30px;
+  scrollbar-width:thin;scrollbar-color:rgba(122,90,36,.55) transparent}
+.sh-body::-webkit-scrollbar{width:8px}
+.sh-body::-webkit-scrollbar-track{background:transparent}
+.sh-body::-webkit-scrollbar-thumb{background:rgba(122,90,36,.45);border-radius:4px;
+  border:2px solid transparent;background-clip:content-box}
+.sh-body::-webkit-scrollbar-thumb:hover{background:rgba(122,90,36,.75);background-clip:content-box}
+.hint{margin:18px 0 0;padding-top:14px;border-top:1px solid rgba(60,44,20,.28);
+  color:var(--paper-mute);font-style:italic}
 .sh-body img.area{width:100%;border-radius:2px;border:1px solid rgba(60,44,20,.35);margin-bottom:16px;display:block}
 /* several pictures of a place: a frame shaped by the first, the others shown whole inside it */
 .gal{margin-bottom:16px}
@@ -189,6 +255,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .slide h4{font-family:var(--display);font-size:21px;font-weight:600;margin:0 0 1px}
 .slide .role{color:var(--paper-mute);font-size:13.5px;margin:0 0 10px}
 .car-nav{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:12px}
+/* with several characters the arrows come first and stay pinned while the text scrolls */
+.car .car-nav{position:sticky;top:-24px;z-index:2;margin:-24px -14px 14px;padding:18px 14px 10px;
+  background:linear-gradient(var(--paper) 78%,transparent)}
+.car-count{flex:1;min-width:0;text-align:center;font-family:var(--display);font-size:14px;
+  font-weight:600;color:var(--paper-ink);line-height:1.2}
+.car-count small{display:block;font-family:var(--body);font-weight:400;font-size:12px;color:var(--paper-mute)}
 .car-nav button{width:32px;height:32px;border:1px solid rgba(60,44,20,.4);background:rgba(255,250,235,.35);
   border-radius:2px;font-size:15px;line-height:1}
 .car-nav button:hover:not(:disabled){background:rgba(255,250,235,.8)}
@@ -203,8 +275,15 @@ button{font:inherit;color:inherit;cursor:pointer}
 .about h3{font-family:var(--display);font-size:24px;margin:0 0 10px}
 
 @media (max-width:760px){
+  :root{--panel-w:0px}
+  body.has-recap .recap-btn{display:inline-block}
+  .sh-close{display:block}
+  .sh-body{padding-top:16px}
+  .sh-close{top:20px;right:20px}
+  .sh-mode{margin-right:68px}
+  .car .car-nav{top:-16px;margin:-16px -8px 14px;padding:12px 8px 10px}
   /* dvh, because on a phone the browser bar slides away and vh does not follow */
-  .sheet{top:auto;left:0;width:100%;height:80vh;height:80dvh;border-left:none;border-top:1px solid rgba(60,44,20,.5);
+  .sheet{top:auto;left:0;width:100%;height:80vh;transition:transform .28s cubic-bezier(.22,.7,.3,1);height:80dvh;border-left:none;border-top:1px solid rgba(60,44,20,.5);
     border-radius:6px 6px 0 0;transform:translateY(100%);box-shadow:0 -18px 50px rgba(0,0,0,.5)}
   .sheet.open{transform:none}
   .sh-head{padding:16px 18px 0}
@@ -227,7 +306,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* Touch targets go by the input, not by the width: a phone held sideways is wider than the
    breakpoint but the finger is the same size. */
 @media (pointer:coarse){
-  .zoom{right:12px;bottom:calc(14px + env(safe-area-inset-bottom, 0px));gap:8px}
+  .zoom{right:calc(var(--panel-w) + 12px);bottom:calc(14px + env(safe-area-inset-bottom, 0px));gap:8px}
   .zoom button{width:44px;height:44px;font-size:20px}
   .sh-close{width:38px;height:38px;font-size:18px}
   .car-nav button{width:40px;height:40px}
@@ -241,6 +320,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   <div class="ttl">__TITLE__<small>__SUBTITLE__</small></div>
   <div class="sp"></div>
   <div class="legend" id="legend"></div>
+  <button class="ghost recap-btn" id="recapBtn">Session recap</button>
   <button class="ghost" id="aboutBtn" hidden>About this atlas</button>
 </header>
 
@@ -260,8 +340,12 @@ button{font:inherit;color:inherit;cursor:pointer}
   <button id="sessNext" aria-label="Later session">›</button>
 </nav>
 
-<aside class="sheet" id="sheet" aria-hidden="true">
+<aside class="sheet" id="sheet" aria-label="Details">
   <button class="sh-close" id="shClose" aria-label="Close">&#215;</button>
+  <div class="sh-mode" id="shMode" role="tablist" aria-label="Panel" hidden>
+    <button id="modeRecap" role="tab" aria-selected="false">Session recap</button>
+    <button id="modePlace" role="tab" aria-selected="true">Place</button>
+  </div>
   <div class="sh-head">
     <div class="sh-kicker" id="shKicker"></div>
     <h2 class="sh-title" id="shTitle"></h2>
@@ -453,11 +537,12 @@ function endPan(e){
   if(pan&&e.pointerId===pan.id){ pan=null; vp.classList.remove('drag'); }
 }
 vp.addEventListener('pointerup',endPan); vp.addEventListener('pointercancel',endPan);
-// A click on the bare map puts the panel away. Not the end of a drag or a pinch, though, and
+// On a phone a click on the bare map puts the panel away. Not the end of a drag or a pinch, though, and
 // not a click on a pin — that one opens a place of its own.
 vp.addEventListener('click',function(e){
   if(e.target.closest('.pin') || (tap && tap.moved)) return;
-  if(sheet.classList.contains('open')) closeSheet();
+  // on a wide screen the panel stays where it is; only the bottom sheet is put away
+  if(MOBILE.matches && sheet.classList.contains('open')) closeSheet();
 });
 document.getElementById('zi').onclick=function(){var r=vp.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1.3)};
 document.getElementById('zo').onclick=function(){var r=vp.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1/1.3)};
@@ -581,6 +666,14 @@ function markCurrent(id){
 var sheet=document.getElementById('sheet'), body=document.getElementById('shBody');
 var tabA=document.getElementById('tabArea'), tabC=document.getElementById('tabChars');
 var cur=null, curTab='area', ci=0;
+/* The panel shows either the recap of the session being read or a place. The switch at its top
+   exists only when some session has a recap written. */
+var mode='place';
+var HAS_RECAP=DATA.sessions.some(function(s){ return recapText(s); });
+function recapText(s){ return s && s.recap && String(s.recap).trim(); }
+var modeBox=document.getElementById('shMode'), modeRecap=document.getElementById('modeRecap'), modePlace=document.getElementById('modePlace');
+// Below this width the panel is a bottom sheet that slides in; above it, a fixed column.
+var MOBILE=window.matchMedia('(max-width:760px)');
 
 function prose(txt){
   var wrap=document.createElement('div'); wrap.className='prose';
@@ -596,6 +689,19 @@ function prose(txt){
 }
 function openPlace(p){
   cur=p; curTab='area'; ci=0;
+  sheet.classList.add('open'); sheet.setAttribute('aria-hidden','false');
+  renderPlace();
+}
+function setMode(m){
+  mode=m;
+  sheet.classList.toggle('mode-recap', m==='recap');
+  modeRecap.setAttribute('aria-selected', m==='recap'?'true':'false');
+  modePlace.setAttribute('aria-selected', m==='place'?'true':'false');
+}
+function renderPlace(){
+  var p=cur;
+  if(!p){ showIntro(); return; }
+  setMode('place');
   var f=fac(p);
   document.getElementById('shKicker').innerHTML='';
   var k=document.getElementById('shKicker');
@@ -609,14 +715,51 @@ function openPlace(p){
   tabC.style.opacity = p.characters.length===0 ? .4 : 1;
   // a region has no characters, and a row with a single tab in it would only be clutter
   tabA.parentNode.style.display = p.isRegion ? 'none' : '';
-  sheet.classList.add('open'); sheet.setAttribute('aria-hidden','false');
   markCurrent(p.id);
   paint();
 }
-function closeSheet(){
-  sheet.classList.remove('open'); sheet.setAttribute('aria-hidden','true');
-  cur=null; markCurrent('');
+/* The recap of the session being read: its name, and what the table wrote down about it. */
+function showRecap(){
+  setMode('recap');
+  var s=DATA.sessions[SESSION];
+  document.getElementById('shKicker').textContent='Recap'+(DATA.sessions.length>1 ? ' \u00b7 '+(SESSION+1)+' of '+DATA.sessions.length : '');
+  document.getElementById('shTitle').textContent=s.label;
+  var sum=document.getElementById('shSum'); sum.textContent=''; sum.style.display='none';
+  tabA.parentNode.style.display='';
+  body.innerHTML=''; body.scrollTop=0;
+  if(recapText(s)) body.appendChild(prose(s.recap));
+  else { var n=document.createElement('p'); n.className='none'; n.textContent='Nothing has been written about this session yet.'; body.appendChild(n); }
 }
+function refreshRecap(){ if(HAS_RECAP && mode==='recap') showRecap(); }
+modeRecap.onclick=function(){ showRecap(); };
+modePlace.onclick=function(){ renderPlace(); };
+document.getElementById('recapBtn').onclick=function(){
+  showRecap(); sheet.classList.add('open'); sheet.setAttribute('aria-hidden','false');
+};
+/* The fixed panel is never blank: with nothing chosen it introduces the atlas and says what to do. */
+function showIntro(){
+  cur=null; markCurrent(''); setMode('place');
+  document.getElementById('shKicker').textContent='Atlas';
+  document.getElementById('shTitle').textContent=DATA.title||'';
+  var sum=document.getElementById('shSum');
+  sum.textContent=DATA.subtitle||''; sum.style.display=DATA.subtitle?'':'none';
+  tabA.parentNode.style.display='none';
+  body.innerHTML=''; body.scrollTop=0;
+  if(DATA.intro) body.appendChild(prose(DATA.intro));
+  var h=document.createElement('p'); h.className='hint';
+  h.textContent=DATA.pois.length ? 'Select a place on the map to read about it here.' : 'This atlas has no places yet.';
+  body.appendChild(h);
+}
+function closeSheet(){
+  if(MOBILE.matches){ sheet.classList.remove('open'); sheet.setAttribute('aria-hidden','true'); cur=null; markCurrent(''); }
+  else if(mode==='place') showIntro();      // the recap stays; Esc has nothing to put away there
+}
+function syncSheet(){
+  // crossing the breakpoint changes what "closed" means
+  if(MOBILE.matches){ if(!cur){ sheet.classList.remove('open'); sheet.setAttribute('aria-hidden','true'); } }
+  else sheet.setAttribute('aria-hidden','false');
+}
+if(MOBILE.addEventListener) MOBILE.addEventListener('change',syncSheet); else MOBILE.addListener(syncSheet);
 document.getElementById('shClose').onclick=closeSheet;
 tabA.onclick=function(){ curTab='area'; paint(); };
 tabC.onclick=function(){ if(cur&&cur.characters.length){ curTab='chars'; paint(); } };
@@ -704,20 +847,18 @@ function carousel(list){
   var nav=document.createElement('div'); nav.className='car-nav';
   var prev=document.createElement('button'); prev.innerHTML='&#8249;'; prev.setAttribute('aria-label','Previous character');
   var next=document.createElement('button'); next.innerHTML='&#8250;'; next.setAttribute('aria-label','Next character');
-  var dots=document.createElement('div'); dots.className='dots';
-  list.forEach(function(c,i){
-    var d=document.createElement('button'); d.setAttribute('aria-label',(i+1)+'. '+(c.name||''));
-    d.onclick=function(){ ci=i; upd(); }; dots.appendChild(d);
-  });
-  nav.appendChild(prev); nav.appendChild(dots); nav.appendChild(next);
-  if(list.length>1) root.appendChild(nav);
+  var count=document.createElement('div'); count.className='car-count';
+  nav.appendChild(prev); nav.appendChild(count); nav.appendChild(next);
+  // the arrows come first, so they are in view the moment the tab opens
+  if(list.length>1) root.insertBefore(nav,win);
 
   function upd(){
     ci=Math.max(0,Math.min(list.length-1,ci));
+    count.innerHTML='';
+    count.appendChild(document.createTextNode(list[ci].name||'Unnamed'));
+    var small=document.createElement('small'); small.textContent=(ci+1)+' of '+list.length; count.appendChild(small);
     track.style.transform='translateX('+(-ci*100)+'%)';
     prev.disabled=ci===0; next.disabled=ci===list.length-1;
-    var ds=dots.children;
-    for(var i=0;i<ds.length;i++) ds[i].setAttribute('aria-current', i===ci?'true':'false');
   }
   prev.onclick=function(){ ci--; upd(); };
   next.onclick=function(){ ci++; upd(); };
@@ -741,6 +882,11 @@ document.addEventListener('keydown',function(e){
   if(e.key==='ArrowRight'){ ci++; c.carUpd(); }
   if(e.key==='ArrowLeft'){ ci--; c.carUpd(); }
 });
+
+modeBox.hidden=!HAS_RECAP;
+if(HAS_RECAP) document.body.classList.add('has-recap');
+syncSheet();
+if(!MOBILE.matches){ if(HAS_RECAP) showRecap(); else showIntro(); }
 
 /* --- legend + about the atlas --- */
 (function(){
@@ -963,6 +1109,7 @@ function drawSessions(){
   if(DATA.sessions.length<2) return;      // one session is no timeline
   bar.hidden=false;
   function paint(){
+    refreshRecap();
     document.getElementById('sessName').textContent=DATA.sessions[SESSION].label;
     document.getElementById('sessCount').textContent=(SESSION+1)+' / '+DATA.sessions.length;
     document.getElementById('sessPrev').disabled=SESSION===0;

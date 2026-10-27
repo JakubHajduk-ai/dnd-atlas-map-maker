@@ -102,6 +102,12 @@ writes into that one. The inspector tells you whether the selected point was mov
 is standing where an earlier session left it, and can put it back. A session that is deleted
 takes its moves with it.
 
+Each session can also carry a **recap**, written under it in Map settings → Sessions. As soon
+as one session has a recap, the panel on the right of the finished map gets a switch at its
+top: **Session recap** or **Place**. The map opens on the recap of the session being read, it
+follows the session switch, and clicking a point flips the panel to that place. On a phone the
+header gets a **Session recap** button that opens the same panel.
+
 The reader lands in the last session — the world as it stands — and can walk back. With
 fewer than two sessions nothing about the map changes and no switch is drawn.
 
@@ -170,7 +176,7 @@ One project is one JSON object:
   "frame": true,                  // engrave a border onto the sheet; absent counts as true
   "titleImage": "data:image/webp;base64,…", // optional title artwork above the map
   "sessions": [                   // optional timeline, in chronological order
-    { "id": "s1", "label": "Session 1 · The road north" },
+    { "id": "s1", "label": "Session 1 · The road north", "recap": "What happened, optional." },
     { "id": "s2", "label": "Session 2 · Winter camp" }
   ],
   "factions": [{                  // a faction; with `area` or `anchor` it is a region

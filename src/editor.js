@@ -50,14 +50,14 @@ function blank(){
     // Sessions are the atlas read at different moments of the campaign. They share one map,
     // one set of points and all their text — only where a point stands can differ. An empty
     // list means the atlas has no timeline at all, which is how every atlas starts.
-    sessions:[],                    // [{id,label}] in chronological order
+    sessions:[],                    // [{id,label,recap}] in chronological order
     factions:[
       newRegion("Neutral", "#4e8f7e")
     ],
     pois:[]
   };
 }
-function newSession(label){ return {id:uid(), label:label}; }
+function newSession(label){ return {id:uid(), label:label, recap:""}; }
 /* Where a point stands in a given session: the last session up to that one that moved it,
    and failing that the point's own coordinates. So a point stays put until something
    actually moves it, and a new session starts out looking exactly like the one before. */
@@ -889,7 +889,7 @@ document.getElementById("btnSettings").onclick = function(){
     sheet.appendChild(el("p","sub","Shown above the map, in the open space that appears when the view is pulled back, and gone as soon as you move in. The finished map then opens pulled back, so it is the first thing a reader sees. A PNG with a transparent background works best; it keeps its transparency."));
 
     sheet.appendChild(el("h3",null,"Sessions"));
-    sheet.appendChild(el("p","sub","The same map read at different moments of the campaign. Points keep their name, description and characters across all of them — only where they stand can differ. A new session starts out looking exactly like the one before it; move a point and the move belongs to that session onwards. With fewer than two sessions the finished map shows no switch at all."));
+    sheet.appendChild(el("p","sub","The same map read at different moments of the campaign. Points keep their name, description and characters across all of them — only where they stand can differ. A new session starts out looking exactly like the one before it; move a point and the move belongs to that session onwards. With fewer than two sessions the finished map shows no switch at all. Write a recap for a session and the finished map shows it in the side panel, next to the places."));
     var slist = el("div");
     function paintSessions(){
       slist.innerHTML="";
@@ -910,6 +910,10 @@ document.getElementById("btnSettings").onclick = function(){
         };
         row.appendChild(nm); row.appendChild(tag); row.appendChild(open); row.appendChild(rm);
         slist.appendChild(row);
+        var rc = textarea(s.recap, function(v){ s.recap=v; persist(); },
+          "Recap: what happened in this session. Optional. Shown in the side panel of the finished map.", 3);
+        rc.classList.add("recap-inp");
+        slist.appendChild(rc);
       });
       var add = el("button","addbtn", S.sessions.length ? "Add session" : "Start a timeline");
       add.onclick=function(){
@@ -1078,7 +1082,7 @@ function normalize(d){
     });
   }
   b.sessions = (d.sessions||[]).map(function(s,i){
-    return {id:s.id||uid(), label:s.label||("Session "+(i+1))};
+    return {id:s.id||uid(), label:s.label||("Session "+(i+1)), recap:s.recap||""};
   });
   var known = {};
   b.sessions.forEach(function(s){ known[s.id]=1; });
@@ -1213,9 +1217,78 @@ document.getElementById("btnExport").onclick = function(){
   });
 };
 
+/* ============================ quick tour ============================ */
+/* A short walk through the editor, shown once to someone who opens it with nothing saved,
+   and again whenever "Quick tour" is pressed. */
+var TOUR_STEPS = [
+  { title:"Make an interactive map",
+    text:"Atlas turns a map image into a page you can share: places to click, the people who live there, regions, and a timeline of your campaign.",
+    items:["Everything happens in this browser. Nothing is uploaded.",
+           "The result is one file that works offline and on any hosting.",
+           "This tour takes a minute. You can reopen it from Quick tour."] },
+  { title:"1. Start with a map",
+    text:"Drop a map image onto the dark area in the middle, or press Choose map image. JPG, PNG and WEBP all work.",
+    items:["Scroll to zoom, drag to pan, and use fit to see the whole map again.",
+           "Map settings holds the atlas name, subtitle and intro text for visitors."] },
+  { title:"2. Add places",
+    text:"Press Add point on the left, then click the map. Drag a point any time to move it.",
+    items:["The panel on the right is where you write: Area for the description and pictures, Characters for the people there.",
+           "Give a point a type and a faction to change its mark and colour.",
+           "Hide a point to keep it off the exported map while you are still writing."] },
+  { title:"3. Shape the world",
+    text:"Everything else lives in Map settings.",
+    items:["Regions: draw territory and place a big name across the land.",
+           "Sessions: start a timeline so visitors can move between moments of the campaign and watch points travel.",
+           "Border: engrave a frame onto map images that have none."] },
+  { title:"4. Preview, save and share",
+    text:"Preview shows what visitors will see. Export site downloads the finished map as one index.html.",
+    items:["Save project downloads a file with all your content. Keep it as your backup.",
+           "Open project takes that file, or an exported index.html, and you carry on where you stopped.",
+           "The editor also remembers your work in this browser, but only in this browser on this computer."] }
+];
+function tourSeen(){ try{ return localStorage.getItem("atlas.tour")==="1"; }catch(e){ return false; } }
+function tourMark(){ try{ localStorage.setItem("atlas.tour","1"); }catch(e){} }
+function openTour(){
+  var at = 0;
+  modal(function(sheet, close){
+    sheet.classList.add("tour");
+    var done = function(){ tourMark(); close(); };
+    function draw(){
+      var st = TOUR_STEPS[at], last = at===TOUR_STEPS.length-1;
+      sheet.innerHTML = "";
+      sheet.appendChild(el("div","tour-step","Step "+(at+1)+" of "+TOUR_STEPS.length));
+      sheet.appendChild(el("h3",null,st.title));
+      sheet.appendChild(el("p","tour-lead",st.text));
+      var ul = el("ul","tour-list");
+      st.items.forEach(function(t){ ul.appendChild(el("li",null,t)); });
+      sheet.appendChild(ul);
+      var dots = el("div","tour-dots");
+      TOUR_STEPS.forEach(function(x,i){
+        var d = el("button", i===at ? "on" : "");
+        d.setAttribute("aria-label","Step "+(i+1));
+        d.onclick = function(){ at = i; draw(); };
+        dots.appendChild(d);
+      });
+      sheet.appendChild(dots);
+      var acts = el("div","sheet-actions");
+      if(!last){ var skip = el("button","tbtn","Skip tour"); skip.onclick = done; acts.appendChild(skip); }
+      if(at>0){ var back = el("button","tbtn","Back"); back.onclick = function(){ at--; draw(); }; acts.appendChild(back); }
+      var next = el("button","tbtn primary", last ? "Start building" : "Next");
+      next.onclick = last ? done : function(){ at++; draw(); };
+      acts.appendChild(next);
+      sheet.appendChild(acts);
+      next.focus();
+    }
+    draw();
+  });
+}
+document.getElementById("btnGuide").onclick = openTour;
+
 /* ============================ start ============================ */
 openDb().then(function(){ return dbGet("project"); }).then(function(saved){
   S = saved ? normalize(saved) : blank();
   renderAll();
   if(S.map) setTimeout(fitView, 30);
+  // someone opening the editor for the first time gets the tour; a returning project does not
+  if(!saved && !tourSeen()) setTimeout(openTour, 250);
 });
