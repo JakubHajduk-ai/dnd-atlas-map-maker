@@ -89,27 +89,24 @@ sideways), it is left out. The editor itself does not draw it; the preview does.
 ### Sessions
 
 An atlas can be read at several moments of the campaign. **Map settings → Sessions** starts a
-timeline; from then on a switch appears above the map in the editor and at the foot of the
-finished one.
+timeline. The map itself never changes between sessions: points stay where they are. Sessions
+only decide what the side panel shows.
 
-Sessions share everything except where the points stand. One map, one set of points, one
-description per point — move a point in session 4 and sessions 1 to 3 keep it where it was.
-A point that nobody moves stays put for the whole campaign, so a new session starts out
-looking exactly like the one before it and you only touch what actually travelled.
+- **Recap.** Write what happened under each session. As soon as one session has a recap, the
+  panel on the right of the finished map gets a switch at its top, **Session recap** or
+  **Place**. The map opens on the recap of the session being read, and clicking a point flips
+  the panel to that place. On a phone the header gets a **Session recap** button that opens the
+  same panel.
+- **Held back until a session.** On a point you can choose from which session its description,
+  its pictures and each of its characters appear. Before that session the panel shows nothing
+  for them (“Nothing has been written about this place yet.”). Use this to let a place fill up
+  as the campaign goes on. A point that should not be on the map at all stays a matter for
+  **Hide from players**, which applies to the whole atlas.
 
-In the editor, the bar above the map says which session you are editing; dragging a point
-writes into that one. The inspector tells you whether the selected point was moved here or
-is standing where an earlier session left it, and can put it back. A session that is deleted
-takes its moves with it.
-
-Each session can also carry a **recap**, written under it in Map settings → Sessions. As soon
-as one session has a recap, the panel on the right of the finished map gets a switch at its
-top: **Session recap** or **Place**. The map opens on the recap of the session being read, it
-follows the session switch, and clicking a point flips the panel to that place. On a phone the
-header gets a **Session recap** button that opens the same panel.
-
-The reader lands in the last session — the world as it stands — and can walk back. With
-fewer than two sessions nothing about the map changes and no switch is drawn.
+At the top of the panel in the finished map a small switch walks between sessions. The reader
+lands in the last one, the world as it stands, and can go back. Everything is in the file, so
+this is a way to pace the reading, not a secret: anyone who opens the file's source can read
+what is held back. With fewer than two sessions there is no switch and nothing is held back.
 
 ### Getting back to a map
 
@@ -174,6 +171,7 @@ One project is one JSON object:
   "intro": "Optional intro text.",
   "map": { "src": "data:image/jpeg;base64,…", "w": 2600, "h": 1700 },
   "frame": true,                  // engrave a border onto the sheet; absent counts as true
+  "background": "magic",          // "magic" (default), "snow" or "mist"
   "titleImage": "data:image/webp;base64,…", // optional title artwork above the map
   "sessions": [                   // optional timeline, in chronological order
     { "id": "s1", "label": "Session 1 · The road north", "recap": "What happened, optional." },
@@ -203,12 +201,15 @@ One project is one JSON object:
     "summary": "The town at the world's door.",
     "description": "Paragraphs are separated by a blank line.",
     "images": ["data:image/jpeg;base64,…"], // any number; the first leads (older projects: "image")
+    "descFrom": "s2",             // optional: summary and description appear from this session on
+    "imagesFrom": "s2",           // optional: the pictures appear from this session on
     "characters": [{
       "id": "g7h8i9",
       "name": "Suzuki",
       "role": "leader of the Confluence",
       "description": "…",
-      "image": "data:image/jpeg;base64,…"
+      "image": "data:image/jpeg;base64,…",
+      "from": "s2"                // optional: the character appears from this session on
     }]
   }]
 }
@@ -217,10 +218,10 @@ One project is one JSON object:
 The coordinates are relative, so swapping the base map for one of a different size does not
 throw the points off.
 
-A point's `x`/`y` is where it stands before the timeline starts. `at` holds only the sessions
-in which it actually moved; to place it in a given session, take the last entry in `at` at or
-before that session, and `x`/`y` if there is none. So a project without `sessions` behaves
-exactly as it did before they existed, and adding a session moves nothing.
+A session id in `descFrom`, `imagesFrom` or a character's `from` means “shown from that session
+on”; empty or missing means always, and an id that matches no session is treated the same way.
+Points have no per-session position: `x`/`y` is where a point stands in every session. A project
+saved by an earlier version with moves in `at` keeps `x`/`y` and drops the moves.
 
 Projects saved before the interface switched to English carry Slovak `type` keys
 (`mesto`, `dedina`, `pevnost`, `pristav`, `hory`, `les`, `ruina`, `miesto`). They are

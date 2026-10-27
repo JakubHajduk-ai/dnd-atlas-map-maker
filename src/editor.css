@@ -139,26 +139,6 @@ button{cursor:pointer}
 .recap-inp{margin:-2px 0 14px;font-size:14px}
 .reg-row .tag{font-size:12px;color:var(--muted);white-space:nowrap}
 
-/* which moment of the campaign is on the table: dragging a point writes into this session */
-.sessbar{
-  position:absolute;left:50%;top:12px;transform:translateX(-50%);
-  display:flex;align-items:center;gap:4px;
-  background:rgba(10,15,17,.92);border:1px solid var(--line-strong);border-radius:var(--r);
-  padding:3px 4px;max-width:min(420px,calc(100% - 28px));
-}
-.sessbar button{
-  width:26px;height:26px;background:none;border:none;border-radius:2px;
-  color:var(--linen-2);font-size:16px;line-height:1;
-}
-.sessbar button:hover:not(:disabled){background:rgba(180,135,74,.16);color:var(--linen)}
-.sessbar button:disabled{opacity:.25;cursor:default}
-.sessbar .sess-name{
-  font-family:var(--display);font-size:13.5px;font-weight:600;color:var(--linen);
-  padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
-.sessbar .sess-count{color:var(--muted);font-size:12px;flex:0 0 auto}
-/* a point that was moved in this very session, as opposed to standing where it already stood */
-.pin[data-moved="1"] .knob{box-shadow:0 0 0 2px var(--brass),0 2px 5px rgba(0,0,0,.5)}
 
 .stage-hint{
   position:absolute;left:50%;bottom:18px;transform:translateX(-50%);

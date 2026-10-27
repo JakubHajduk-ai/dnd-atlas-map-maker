@@ -33,7 +33,6 @@ var mode = null;         // null | "poi" | "anchor" | "area" — what a click is
 var modeReg = null;      // id of the region whose area or big pin is being drawn
 var draft = null;        // polygon being drawn [[x,y],…]
 var tab = "area";        // inspector tab
-var curSession = 0;      // index into S.sessions — which moment of the campaign is being edited
 var view = {z:1, x:0, y:0};
 
 function uid(){ return Math.random().toString(36).slice(2,9); }
@@ -46,10 +45,12 @@ function blank(){
     intro:"",
     map:null,                       // {src,w,h}
     frame:true,                     // engrave a border onto the sheet (off for maps that have one)
+    background:"magic",             // behind the map in the finished site: "magic", "snow" or "mist"
     titleImage:null,                // artwork shown above the map when the view is pulled back
-    // Sessions are the atlas read at different moments of the campaign. They share one map,
-    // one set of points and all their text — only where a point stands can differ. An empty
-    // list means the atlas has no timeline at all, which is how every atlas starts.
+    // Sessions are the atlas read at different moments of the campaign. The map is the same in
+    // all of them; they decide what the side panel shows: a recap per session, and from which
+    // session on a place's text, pictures and characters appear. An empty list means no timeline,
+    // which is how every atlas starts.
     sessions:[],                    // [{id,label,recap}] in chronological order
     factions:[
       newRegion("Neutral", "#4e8f7e")
@@ -58,27 +59,32 @@ function blank(){
   };
 }
 function newSession(label){ return {id:uid(), label:label, recap:""}; }
-/* Where a point stands in a given session: the last session up to that one that moved it,
-   and failing that the point's own coordinates. So a point stays put until something
-   actually moves it, and a new session starts out looking exactly like the one before. */
-function posAt(p, upto){
-  var x=p.x, y=p.y;
-  for(var i=0; i<=upto && i<S.sessions.length; i++){
-    var a = p.at && p.at[S.sessions[i].id];
-    if(a){ x=a.x; y=a.y; }
-  }
-  return {x:x, y:y};
+/* A session in the finished map is a point in the campaign. A place's description, its pictures
+   and each of its characters can be held back until a given session (`descFrom`, `imagesFrom`,
+   `from`, all session ids; empty means always). */
+function sessionLabelOf(id){
+  for(var i=0;i<S.sessions.length;i++) if(S.sessions[i].id===id) return S.sessions[i].label;
+  return "";
 }
-function posOf(p){ return S.sessions.length ? posAt(p, curSession) : {x:p.x, y:p.y}; }
-/* Moving a point writes into the session being edited, never into the ones before it. */
-function moveTo(p, n){
-  if(!S.sessions.length){ p.x=n.x; p.y=n.y; return; }
-  var sid = S.sessions[curSession].id;
-  if(!p.at) p.at = {};
-  p.at[sid] = {x:n.x, y:n.y};
+function fromSelect(current, onset){
+  var sel = document.createElement("select"); sel.className="inp";
+  var all = document.createElement("option"); all.value=""; all.textContent="Always"; sel.appendChild(all);
+  S.sessions.forEach(function(s){
+    var o = document.createElement("option"); o.value=s.id; o.textContent="From "+s.label; sel.appendChild(o);
+  });
+  sel.value = sessionLabelOf(current) ? current : "";
+  sel.onchange = function(){ onset(sel.value); };
+  return sel;
 }
-function movedHere(p){
-  return !!(S.sessions.length && p.at && p.at[S.sessions[curSession].id]);
+/* how many things are held back until a given session, for the list in map settings */
+function heldFrom(id){
+  var n = 0;
+  S.pois.forEach(function(p){
+    if(p.descFrom===id) n++;
+    if(p.imagesFrom===id) n++;
+    p.characters.forEach(function(c){ if(c.from===id) n++; });
+  });
+  return n;
 }
 /* A region is a faction that can additionally carry borders and a big pin.
    Both are optional — a faction without official borders leaves `area` and `anchor` empty. */
@@ -99,7 +105,7 @@ function newPoi(x,y){
     characters:[]
   };
 }
-function newChar(){ return {id:uid(), name:"New character", role:"", description:"", image:null}; }
+function newChar(){ return {id:uid(), name:"New character", role:"", description:"", image:null, from:""}; }
 function facOf(p){
   for(var i=0;i<S.factions.length;i++) if(S.factions[i].id===p.factionId) return S.factions[i];
   return null;
@@ -396,17 +402,16 @@ function renderMap(){
 
   S.pois.forEach(function(p){
     var el = document.createElement("div");
-    var at = posOf(p);
+    var at = {x:p.x, y:p.y};
     el.className="pin"; el.dataset.id=p.id; el.dataset.type=p.type;
     el.style.left = (at.x*100)+"%"; el.style.top = (at.y*100)+"%";
     el.style.setProperty("--pc", colorOf(p));
     if(sel===p.id) el.dataset.sel="1";
     if(p.hidden) el.dataset.hidden="1";
-    if(movedHere(p)) el.dataset.moved="1";
     el.innerHTML = '<div class="knob">'+iconSvg(p.type)+'</div><div class="lbl"></div>';
     el.querySelector(".lbl").textContent = p.name;
     attachDrag(el,
-      function(n){ moveTo(p, n); },
+      function(n){ p.x=n.x; p.y=n.y; },
       function(){ selectPoi(p.id); renderAll(); });
     cv.appendChild(el);
   });
@@ -690,20 +695,13 @@ function renderInspector(){
         "Text for the players. A blank line starts a new paragraph.", 9)));
 
     if(S.sessions.length>1){
-      var where = el("div","field");
-      where.appendChild(el("label",null,"In "+S.sessions[curSession].label));
-      if(movedHere(p)){
-        where.appendChild(el("p","sub","Moved in this session. Earlier sessions keep the point where it was."));
-        var undo = el("button","mini","Put it back where it was");
-        undo.onclick=function(){
-          delete p.at[S.sessions[curSession].id];
-          renderAll(); persist();
-        };
-        where.appendChild(undo);
-      } else {
-        where.appendChild(el("p","sub","Standing where the earlier sessions left it. Drag it on the map to move it from this session onwards."));
-      }
-      host.appendChild(where);
+      var held = el("div","field");
+      held.appendChild(el("label",null,"Shown to readers"));
+      held.appendChild(el("p","sub","Hold this place back until a session. Before it, the panel says nothing has been written."));
+      var r1 = el("div","reg-row"); r1.appendChild(el("span","tag","Short and long description")); r1.appendChild(fromSelect(p.descFrom, function(v){ p.descFrom=v; persist(); }));
+      var r2 = el("div","reg-row"); r2.appendChild(el("span","tag","Pictures")); r2.appendChild(fromSelect(p.imagesFrom, function(v){ p.imagesFrom=v; persist(); }));
+      held.appendChild(r1); held.appendChild(r2);
+      host.appendChild(held);
     }
 
     var hid = el("label","field");
@@ -738,6 +736,11 @@ function renderChars(host, owner){
     top.appendChild(fields);
     box.appendChild(top);
     box.appendChild(textarea(c.description, function(v){ c.description=v; persist(); }, "Who they are, what they want, what they hide.", 4));
+    if(S.sessions.length>1){
+      var cf = el("div","reg-row"); cf.style.marginTop="8px";
+      cf.appendChild(el("span","tag","Appears")); cf.appendChild(fromSelect(c.from, function(v){ c.from=v; persist(); }));
+      box.appendChild(cf);
+    }
     var acts = el("div","char-actions");
     if(idx>0){
       var up=el("button","mini","↑");
@@ -832,27 +835,7 @@ function renderRegionInspector(host, f){
   host.appendChild(wrap);
 }
 
-function renderAll(){ renderSessions(); renderMap(); renderList(); renderInspector(); }
-
-/* ============================ sessions ============================ */
-var sessBar = document.getElementById("sessBar");
-function renderSessions(){
-  if(curSession > S.sessions.length-1) curSession = S.sessions.length-1;
-  if(curSession < 0) curSession = 0;
-  // one session is no timeline: the bar would only be in the way
-  sessBar.classList.toggle("hidden", !(S.map && S.sessions.length>1));
-  if(S.sessions.length<2) return;
-  document.getElementById("sessName").textContent = S.sessions[curSession].label;
-  document.getElementById("sessCount").textContent = (curSession+1)+" / "+S.sessions.length;
-  document.getElementById("sessPrev").disabled = curSession===0;
-  document.getElementById("sessNext").disabled = curSession===S.sessions.length-1;
-}
-function goSession(i){
-  curSession = Math.max(0, Math.min(S.sessions.length-1, i));
-  renderAll();
-}
-document.getElementById("sessPrev").onclick = function(){ goSession(curSession-1); };
-document.getElementById("sessNext").onclick = function(){ goSession(curSession+1); };
+function renderAll(){ renderMap(); renderList(); renderInspector(); }
 
 /* ============================ toast + modal ============================ */
 function toast(msg){
@@ -889,26 +872,28 @@ document.getElementById("btnSettings").onclick = function(){
     sheet.appendChild(el("p","sub","Shown above the map, in the open space that appears when the view is pulled back, and gone as soon as you move in. The finished map then opens pulled back, so it is the first thing a reader sees. A PNG with a transparent background works best; it keeps its transparency."));
 
     sheet.appendChild(el("h3",null,"Sessions"));
-    sheet.appendChild(el("p","sub","The same map read at different moments of the campaign. Points keep their name, description and characters across all of them — only where they stand can differ. A new session starts out looking exactly like the one before it; move a point and the move belongs to that session onwards. With fewer than two sessions the finished map shows no switch at all. Write a recap for a session and the finished map shows it in the side panel, next to the places."));
+    sheet.appendChild(el("p","sub","The same map read at different moments of the campaign. The map itself never changes: sessions only decide what the side panel shows. Write a recap for each session, and on a point choose from which session its text, pictures and characters appear. With fewer than two sessions the finished map shows no session switch."));
     var slist = el("div");
     function paintSessions(){
       slist.innerHTML="";
       S.sessions.forEach(function(s, i){
         var row = el("div","reg-row");
-        var moves = S.pois.filter(function(p){ return p.at && p.at[s.id]; }).length;
-        var nm = input(s.label, function(v){ s.label=v; renderSessions(); persist(); });
-        var tag = el("span","tag", moves ? moves+(moves===1?" move":" moves") : "nothing moved");
-        var open = el("button","mini","Edit");
-        open.onclick=function(){ goSession(i); close(); };
+        var held = heldFrom(s.id);
+        var nm = input(s.label, function(v){ s.label=v; persist(); });
+        var tag = el("span","tag", held ? held+(held===1?" thing appears here":" things appear here") : "");
         var rm = el("button","mini del","×");
         rm.onclick=function(){
           var gone=S.sessions[i].id;
           S.sessions.splice(i,1);
-          // the moves recorded for it would point at nothing, so they go with it
-          S.pois.forEach(function(p){ if(p.at){ delete p.at[gone]; } });
+          // what was held back until this session would wait for nothing, so it is shown from the start
+          S.pois.forEach(function(p){
+            if(p.descFrom===gone) p.descFrom="";
+            if(p.imagesFrom===gone) p.imagesFrom="";
+            p.characters.forEach(function(c){ if(c.from===gone) c.from=""; });
+          });
           paintSessions(); renderAll(); persist();
         };
-        row.appendChild(nm); row.appendChild(tag); row.appendChild(open); row.appendChild(rm);
+        row.appendChild(nm); row.appendChild(tag); row.appendChild(rm);
         slist.appendChild(row);
         var rc = textarea(s.recap, function(v){ s.recap=v; persist(); },
           "Recap: what happened in this session. Optional. Shown in the side panel of the finished map.", 3);
@@ -918,7 +903,6 @@ document.getElementById("btnSettings").onclick = function(){
       var add = el("button","addbtn", S.sessions.length ? "Add session" : "Start a timeline");
       add.onclick=function(){
         S.sessions.push(newSession("Session "+(S.sessions.length+1)));
-        curSession = S.sessions.length-1;
         paintSessions(); renderAll(); persist();
       };
       slist.appendChild(add);
@@ -972,6 +956,14 @@ document.getElementById("btnSettings").onclick = function(){
     fr.appendChild(frcb);
     fr.appendChild(document.createTextNode("Engrave a border onto the map"));
     sheet.appendChild(fr);
+    var bgSel = document.createElement("select"); bgSel.className="inp";
+    [["magic","Magic motes"],["snow","Snow, with a little wind"],["mist","Mist, drifting slowly"]].forEach(function(o){
+      var op = document.createElement("option"); op.value=o[0]; op.textContent=o[1]; bgSel.appendChild(op);
+    });
+    bgSel.value = S.background || "magic";
+    bgSel.onchange = function(){ S.background=bgSel.value; persist(); };
+    sheet.appendChild(field("Background of the finished map", bgSel));
+    sheet.appendChild(el("p","sub","What drifts in the dark around the map. The preview shows the choice; it is not drawn in the editor."));
     sheet.appendChild(el("p","sub","Two ruled lines and a lozenge at each corner, so a plain image does not end like a photograph. Turn it off if your map already has a border painted on it."));
     var rep = el("button","tbtn","Replace map image");
     rep.onclick=function(){
@@ -1059,7 +1051,7 @@ document.getElementById("btnLoad").onclick = function(){
   });
 };
 function normChar(c){
-  return {id:c.id||uid(), name:c.name||"", role:c.role||"", description:c.description||"", image:c.image||null};
+  return {id:c.id||uid(), name:c.name||"", role:c.role||"", description:c.description||"", image:c.image||null, from:c.from||""};
 }
 function normalize(d){
   var b = blank();
@@ -1068,6 +1060,7 @@ function normalize(d){
   b.intro = d.intro || "";
   b.map = d.map || null;
   b.frame = d.frame !== false;      // projects from before the frame existed get one
+  b.background = (d.background==="snow" || d.background==="mist") ? d.background : "magic";
   b.titleImage = d.titleImage || null;
   // older projects have factions without territory — fill in empty fields, not invented ones
   if(d.factions && d.factions.length){
@@ -1087,19 +1080,18 @@ function normalize(d){
   var known = {};
   b.sessions.forEach(function(s){ known[s.id]=1; });
   b.pois = (d.pois||[]).map(function(p){
-    // a move belonging to a session that is gone would be dead weight, so it is dropped
-    var at = null;
-    if(p.at) for(var k in p.at){
-      if(known[k] && p.at[k]){ (at = at || {})[k] = {x:+p.at[k].x||0, y:+p.at[k].y||0}; }
-    }
+    // anything held back until a session that is gone is simply shown from the start
+    var chars = (p.characters||[]).map(normChar);
+    chars.forEach(function(c){ if(!known[c.from]) c.from=""; });
     return {
       id:p.id||uid(), name:p.name||"", type:normType(p.type),
       factionId:p.factionId || b.factions[0].id,
-      x:+p.x||0, y:+p.y||0, hidden:!!p.hidden, at:at,
+      x:+p.x||0, y:+p.y||0, hidden:!!p.hidden,
+      descFrom:known[p.descFrom]?p.descFrom:"", imagesFrom:known[p.imagesFrom]?p.imagesFrom:"",
       summary:p.summary||"", description:p.description||"",
       // a point used to hold a single `image`; it becomes the first of its pictures
       images:(p.images && p.images.length) ? p.images.filter(Boolean) : (p.image ? [p.image] : []),
-      characters:(p.characters||[]).map(normChar)
+      characters:chars
     };
   });
   return b;
@@ -1238,7 +1230,7 @@ var TOUR_STEPS = [
   { title:"3. Shape the world",
     text:"Everything else lives in Map settings.",
     items:["Regions: draw territory and place a big name across the land.",
-           "Sessions: start a timeline so visitors can move between moments of the campaign and watch points travel.",
+           "Sessions: write a recap for each one, and hold a place's text, pictures or characters back until the session where they come up.",
            "Border: engrave a frame onto map images that have none."] },
   { title:"4. Preview, save and share",
     text:"Preview shows what visitors will see. Export site downloads the finished map as one index.html.",

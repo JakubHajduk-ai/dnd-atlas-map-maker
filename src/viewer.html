@@ -49,6 +49,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .vp{position:absolute;top:0;bottom:0;left:0;right:var(--panel-w);overflow:hidden;cursor:grab;touch-action:none;
   background:radial-gradient(ellipse at 50% 42%,#15201e,#080c0e 72%)}
 .vp.drag{cursor:grabbing}
+/* snow and mist go on a darker, plainer ground than the motes: no aura of their own */
+.vp[data-bg="snow"]{background:#04070a}
+.vp[data-bg="mist"]{background:radial-gradient(ellipse at 50% 45%,#0e1618,#05090b 75%)}
+.vp[data-bg="snow"]::before,.vp[data-bg="mist"]::before{display:none}
 /* magic under the map: a slowly breathing glow and rising motes (canvas #magic); they never reach over the map */
 .vp::before{content:"";position:absolute;inset:-25%;pointer-events:none;
   background:
@@ -124,19 +128,16 @@ button{font:inherit;color:inherit;cursor:pointer}
 .rgn.on{opacity:1}
 .rgn i{width:9px;height:9px;border-radius:50%;display:block;flex:0 0 auto}
 
-/* the moment of the campaign being read; only there when the atlas has more than one */
-.sess{position:fixed;left:calc((100% - var(--panel-w)) / 2);bottom:16px;transform:translateX(-50%);z-index:20;
-  display:flex;align-items:center;gap:2px;max-width:min(420px,calc(100% - var(--panel-w) - 150px));
-  background:rgba(8,12,14,.88);border:1px solid var(--line-2);border-radius:3px;padding:3px 4px}
-.sess[hidden]{display:none}
-.sess button{width:30px;height:30px;background:none;border:none;border-radius:2px;
-  color:var(--linen);font-size:17px;line-height:1}
-.sess button:hover:not(:disabled){background:rgba(180,135,74,.16)}
-.sess button:disabled{opacity:.25;cursor:default}
-.sess-body{min-width:0;padding:0 6px;text-align:center}
-.sess-name{display:block;font-family:var(--display);font-size:13.5px;font-weight:600;color:var(--linen);
+/* the session being read, at the top of the side panel; only there when the atlas has more than one */
+.sh-sess{display:flex;align-items:center;gap:4px;margin:0 0 10px}
+.sh-sess button{width:30px;height:30px;flex:0 0 auto;background:none;border:1px solid var(--sepia-rule);border-radius:2px;
+  color:var(--sepia-ink);font-size:17px;line-height:1}
+.sh-sess button:hover:not(:disabled){background:rgba(255,246,214,.4)}
+.sh-sess button:disabled{opacity:.3;cursor:default}
+.sh-sess-body{flex:1;min-width:0;text-align:center}
+.sess-name{display:block;font-family:var(--display);font-size:13.5px;font-weight:600;letter-spacing:.06em;color:var(--sepia-ink);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sess-count{display:block;font-size:11px;color:var(--muted);letter-spacing:.06em}
+.sess-count{display:block;font-size:11px;color:#6b5330;letter-spacing:.08em}
 
 .zoom{position:fixed;right:calc(var(--panel-w) + 16px);bottom:16px;z-index:20;display:flex;flex-direction:column;gap:5px}
 .zoom button{width:36px;height:36px;background:rgba(8,12,14,.88);border:1px solid var(--line-2);
@@ -170,7 +171,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sheet > *{position:relative}
 .recap-btn{display:none}
 /* the switch between the session recap and the place: two engraved plates, the chosen one inked in */
-.sh-mode{display:flex;margin:24px 28px 0;border:1px solid var(--sepia-rule);border-radius:2px;
+.sh-top{margin:24px 28px 0}
+.sh-top[hidden]{display:none}
+.sh-mode{display:flex;margin:0;border:1px solid var(--sepia-rule);border-radius:2px;
   background:rgba(255,246,214,.28);box-shadow:inset 0 1px 3px rgba(60,34,10,.18)}
 .sh-mode[hidden]{display:none}
 .sh-mode button{flex:1;background:none;border:none;border-radius:1px;padding:7px 10px;
@@ -180,7 +183,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sh-mode button:hover{color:var(--sepia-ink);background:rgba(255,246,214,.35)}
 .sh-mode button[aria-selected="true"]{background:var(--sepia-ink);color:var(--vellum);
   box-shadow:inset 0 0 0 1px rgba(255,246,214,.18)}
-.sh-mode:not([hidden]) + .sh-head{padding-top:18px}
+.sh-top:not([hidden]) + .sh-head{padding-top:18px}
 .sheet.mode-recap .sh-tabs button{display:none}
 .sheet.mode-recap .sh-tabs{height:0;margin:16px 0 0}
 .sh-kicker{text-transform:uppercase;letter-spacing:.2em;font-size:11px;color:var(--rubric)}
@@ -280,7 +283,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   .sh-close{display:block}
   .sh-body{padding-top:16px}
   .sh-close{top:20px;right:20px}
-  .sh-mode{margin-right:68px}
+  .sh-top{margin-right:68px}
   .car .car-nav{top:-16px;margin:-16px -8px 14px;padding:12px 8px 10px}
   /* dvh, because on a phone the browser bar slides away and vh does not follow */
   .sheet{top:auto;left:0;width:100%;height:80vh;transition:transform .28s cubic-bezier(.22,.7,.3,1);height:80dvh;border-left:none;border-top:1px solid rgba(60,44,20,.5);
@@ -334,17 +337,18 @@ button{font:inherit;color:inherit;cursor:pointer}
 
 <div class="rgn" id="rgn" aria-hidden="true"><i></i><span></span></div>
 
-<nav class="sess" id="sess" hidden aria-label="Sessions">
-  <button id="sessPrev" aria-label="Earlier session">‹</button>
-  <span class="sess-body"><span class="sess-name" id="sessName"></span><span class="sess-count" id="sessCount"></span></span>
-  <button id="sessNext" aria-label="Later session">›</button>
-</nav>
-
 <aside class="sheet" id="sheet" aria-label="Details">
   <button class="sh-close" id="shClose" aria-label="Close">&#215;</button>
-  <div class="sh-mode" id="shMode" role="tablist" aria-label="Panel" hidden>
-    <button id="modeRecap" role="tab" aria-selected="false">Session recap</button>
-    <button id="modePlace" role="tab" aria-selected="true">Place</button>
+  <div class="sh-top" id="shTop" hidden>
+    <div class="sh-sess" id="shSess" hidden>
+      <button id="sessPrev" aria-label="Earlier session">&#8249;</button>
+      <span class="sh-sess-body"><span class="sess-name" id="sessName"></span><span class="sess-count" id="sessCount"></span></span>
+      <button id="sessNext" aria-label="Later session">&#8250;</button>
+    </div>
+    <div class="sh-mode" id="shMode" role="tablist" aria-label="Panel" hidden>
+      <button id="modeRecap" role="tab" aria-selected="false">Session recap</button>
+      <button id="modePlace" role="tab" aria-selected="true">Place</button>
+    </div>
   </div>
   <div class="sh-head">
     <div class="sh-kicker" id="shKicker"></div>
@@ -375,6 +379,7 @@ function published(p){
     title:p.title, subtitle:p.subtitle, intro:p.intro, map:p.map,
     sessions:p.sessions||[],
     frame:p.frame!==false,
+    background:(p.background==='snow'||p.background==='mist')?p.background:'magic',
     titleImage:p.titleImage||null,
     factions:(p.factions||[]).map(function(f){
       var pinned = !!f.anchor;
@@ -558,19 +563,9 @@ function regionPlace(f){
 }
 function hasArea(f){ return !!(f.area && f.area.length>2); }
 
-/* Where a point stands in the session being read: the last session up to this one that
-   moved it, and failing that the point's own coordinates. Regions never move. */
-function posAt(p, upto){
-  var x=p.x, y=p.y;
-  for(var i=0; i<=upto && i<DATA.sessions.length; i++){
-    var a=p.at && p.at[DATA.sessions[i].id];
-    if(a){ x=a.x; y=a.y; }
-  }
-  return {x:x, y:y};
-}
 function pinEl(p, big){
   var b=document.createElement('button');
-  var at=big ? {x:p.x,y:p.y} : posAt(p, SESSION);
+  var at={x:p.x,y:p.y};
   b.className='pin'+(big?' big':''); b.dataset.id=p.id;
   if(!big) b.dataset.type=p.type;
   b.style.left=(at.x*100)+'%'; b.style.top=(at.y*100)+'%';
@@ -671,6 +666,14 @@ var cur=null, curTab='area', ci=0;
 var mode='place';
 var HAS_RECAP=DATA.sessions.some(function(s){ return recapText(s); });
 function recapText(s){ return s && s.recap && String(s.recap).trim(); }
+/* A place's text, pictures and each character can be held back until a session. They are shown
+   once the session being read is that one or a later one; an id that matches nothing means always. */
+function shownFrom(id){
+  if(!id) return true;
+  for(var i=0;i<DATA.sessions.length;i++) if(DATA.sessions[i].id===id) return SESSION>=i;
+  return true;
+}
+function visChars(p){ return (p.characters||[]).filter(function(c){ return shownFrom(c.from); }); }
 var modeBox=document.getElementById('shMode'), modeRecap=document.getElementById('modeRecap'), modePlace=document.getElementById('modePlace');
 // Below this width the panel is a bottom sheet that slides in; above it, a fixed column.
 var MOBILE=window.matchMedia('(max-width:760px)');
@@ -709,10 +712,13 @@ function renderPlace(){
   k.appendChild(document.createTextNode(p.isRegion ? 'Region' : (TYPES[p.type]||'Place')+(f?' · '+f.label:'')));
   document.getElementById('shTitle').textContent=p.name;
   var sum=document.getElementById('shSum');
-  sum.textContent=p.summary||''; sum.style.display=p.summary?'':'none';
-  tabC.textContent = p.characters.length ? 'Characters ('+p.characters.length+')' : 'Characters';
-  tabC.disabled = p.characters.length===0;
-  tabC.style.opacity = p.characters.length===0 ? .4 : 1;
+  var sm=shownFrom(p.descFrom) ? p.summary : '';
+  sum.textContent=sm||''; sum.style.display=sm?'':'none';
+  var vc=visChars(p);
+  if(curTab==='chars' && !vc.length) curTab='area';
+  tabC.textContent = vc.length ? 'Characters ('+vc.length+')' : 'Characters';
+  tabC.disabled = vc.length===0;
+  tabC.style.opacity = vc.length===0 ? .4 : 1;
   // a region has no characters, and a row with a single tab in it would only be clutter
   tabA.parentNode.style.display = p.isRegion ? 'none' : '';
   markCurrent(p.id);
@@ -762,7 +768,7 @@ function syncSheet(){
 if(MOBILE.addEventListener) MOBILE.addEventListener('change',syncSheet); else MOBILE.addListener(syncSheet);
 document.getElementById('shClose').onclick=closeSheet;
 tabA.onclick=function(){ curTab='area'; paint(); };
-tabC.onclick=function(){ if(cur&&cur.characters.length){ curTab='chars'; paint(); } };
+tabC.onclick=function(){ if(cur&&visChars(cur).length){ curTab='chars'; paint(); } };
 
 function paint(){
   tabA.setAttribute('aria-selected', curTab==='area'?'true':'false');
@@ -770,11 +776,11 @@ function paint(){
   body.innerHTML=''; body.scrollTop=0;
   if(!cur) return;
   if(curTab==='area'){
-    var pics=imagesOf(cur);
+    var pics=shownFrom(cur.imagesFrom) ? imagesOf(cur) : [];
     if(pics.length) body.appendChild(gallery(pics, cur.name));
-    body.appendChild(prose(cur.description));
+    body.appendChild(prose(shownFrom(cur.descFrom) ? cur.description : ''));
   } else {
-    body.appendChild(carousel(cur.characters));
+    body.appendChild(carousel(visChars(cur)));
   }
 }
 /* A place may carry several pictures; a region, or a place saved before that, carries one. */
@@ -884,6 +890,8 @@ document.addEventListener('keydown',function(e){
 });
 
 modeBox.hidden=!HAS_RECAP;
+document.getElementById('shSess').hidden=DATA.sessions.length<2;
+document.getElementById('shTop').hidden=!(HAS_RECAP||DATA.sessions.length>1);
 if(HAS_RECAP) document.body.classList.add('has-recap');
 syncSheet();
 if(!MOBILE.matches){ if(HAS_RECAP) showRecap(); else showIntro(); }
@@ -921,9 +929,11 @@ if(!MOBILE.matches){ if(HAS_RECAP) showRecap(); else showIntro(); }
 /* --- magic under the map --- */
 /* Glowing motes on a canvas behind the map. No library: a sprite drawn up front
    and requestAnimationFrame are enough, and the exported map stays one offline file. */
+vp.dataset.bg=DATA.background;
 (function(){
   var c=document.getElementById('magic');
   if(!c||!c.getContext) return;
+  if(DATA.background!=='magic') return;     // snow and mist are drawn further down
   var ctx=c.getContext('2d');
   var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   var css=getComputedStyle(document.documentElement);
@@ -986,6 +996,153 @@ if(!MOBILE.matches){ if(HAS_RECAP) showRecap(); else showIntro(); }
     if(!document.hidden && !calm){ last=0; requestAnimationFrame(frame); }
   });
   requestAnimationFrame(frame);
+})();
+
+/* --- snow under the map --- */
+/* The other background: snow falling through the dark on the same canvas the motes use. It is
+   built in three layers of depth. Far flakes are many, tiny, sharp and slow; the middle ones are
+   a little larger; the few near ones are big, soft and out of focus, the way a flake close to a
+   lens is. Every flake flutters as it falls, its speed rising and dipping, and a slow wind
+   leans the whole fall one way and then eases back, with small eddies on top. */
+(function(){
+  if(DATA.background!=='snow') return;
+  var c=document.getElementById('magic');
+  if(!c||!c.getContext) return;
+  var ctx=c.getContext('2d');
+  var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var W=0,H=0,flakes=[],last=0,clock=0;
+  // one round sprite per amount of blur: a sharp point, a soft one, and a wide pale bokeh disc
+  function disc(solid){
+    var s=document.createElement('canvas'); s.width=s.height=48;
+    var g=s.getContext('2d'), gr=g.createRadialGradient(24,24,0,24,24,24);
+    gr.addColorStop(0,'rgba(255,255,255,1)');
+    gr.addColorStop(solid,'rgba(244,249,253,.92)');
+    gr.addColorStop(1,'rgba(244,249,253,0)');
+    g.fillStyle=gr; g.fillRect(0,0,48,48);
+    return s;
+  }
+  var sharp=disc(.62), soft=disc(.3), blur=disc(.05);
+  function flake(y){
+    // most flakes are far and small; the near, large ones are rare
+    var q=Math.random(), layer=q<.62?0:(q<.92?1:2), d, r, img, a, vy;
+    if(layer===0){ d=.25+Math.random()*.2; r=.5+Math.random()*.7; img=sharp; a=.45+Math.random()*.3; vy=14+Math.random()*12; }
+    else if(layer===1){ d=.5+Math.random()*.25; r=1.1+Math.random()*1.1; img=Math.random()<.5?sharp:soft; a=.55+Math.random()*.3; vy=26+Math.random()*20; }
+    else { d=.85+Math.random()*.15; r=2.6+Math.random()*3; img=blur; a=.16+Math.random()*.2; vy=52+Math.random()*34; }
+    return {x:Math.random()*W, y:y===undefined?Math.random()*H:y, d:d, r:r, img:img, a:a, vy:vy,
+      ph:Math.random()*6.28, fr:.5+Math.random()*1.1,            // flutter, side to side
+      ph2:Math.random()*6.28, fr2:.17+Math.random()*.3,          // a slower second sway
+      sw:4+Math.random()*11*d, sw2:3+Math.random()*7,
+      tw:Math.random()*6.28, ftw:.4+Math.random()*1.2};          // a faint glint as it turns
+  }
+  function size(){
+    var dpr=Math.min(window.devicePixelRatio||1,2);
+    W=vp.clientWidth; H=vp.clientHeight;
+    c.width=Math.round(W*dpr); c.height=Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    var n=Math.round(Math.max(90,Math.min(300,W*H/5200)));
+    while(flakes.length<n) flakes.push(flake());
+    flakes.length=n;
+  }
+  // wind in px/s: a steady lean plus two slow gusts that do not line up with each other
+  function wind(t){ return 14+26*Math.sin(t*.19)+12*Math.sin(t*.53+1.3); }
+  function draw(dt){
+    var w=wind(clock), lift=Math.sin(clock*.31)*5;     // a gust also lifts the snow a little
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<flakes.length;i++){
+      var f=flakes[i];
+      f.ph+=f.fr*dt; f.ph2+=f.fr2*dt; f.tw+=f.ftw*dt;
+      // a tumbling flake does not fall at one speed: it hangs, then drops
+      var fall=f.vy*(1+.28*Math.sin(f.ph*.9+f.ph2))-lift*f.d;
+      f.y+=fall*dt;
+      f.x+=(w*(.25+f.d*.9)+Math.cos(f.ph)*f.sw+Math.sin(f.ph2)*f.sw2)*dt;
+      if(f.y-f.r*2>H){ f.y=-f.r*3; f.x=Math.random()*W; }
+      if(f.x>W+14) f.x-=W+28; else if(f.x<-14) f.x+=W+28;
+      // it fades in at the top and out at the bottom, so the wrap is never seen
+      var edge=Math.min(1,(f.y+24)/70,(H+24-f.y)/70);
+      ctx.globalAlpha=Math.max(0,f.a*edge*(.82+.18*Math.sin(f.tw)));
+      var r=f.r*2;
+      ctx.drawImage(f.img,f.x-r,f.y-r,r*2,r*2);
+    }
+    ctx.globalAlpha=1;
+  }
+  function frame(t){
+    var dt=last?Math.min(.05,(t-last)/1000):0; last=t; clock+=dt;
+    draw(dt);
+    if(!calm && !document.hidden) requestAnimationFrame(frame);
+  }
+  size();
+  window.addEventListener('resize',function(){ size(); if(calm) draw(0); });
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden && !calm){ last=0; requestAnimationFrame(frame); }
+  });
+  if(calm) draw(0); else requestAnimationFrame(frame);
+})();
+
+/* --- mist behind the map --- */
+/* Banks of fog drifting past, very slowly, in the dark around the map. Each bank is baked once
+   from a heap of soft discs; after that a frame is one drawImage per bank. */
+(function(){
+  if(DATA.background!=='mist') return;
+  var c=document.getElementById('magic');
+  if(!c||!c.getContext) return;
+  var ctx=c.getContext('2d');
+  var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var W=0,H=0,banks=[],last=0,clock=0;
+  function bake(){
+    var w=1000, h=360, s=document.createElement('canvas'); s.width=w; s.height=h;
+    var g=s.getContext('2d'), n=9+Math.floor(Math.random()*5);
+    for(var i=0;i<n;i++){
+      // every disc stays wholly inside the sprite, or its edge would show as a straight cut
+      var r=55+Math.random()*55, x=r+Math.random()*(w-r*2), y=r+Math.random()*(h-r*2),
+          gr=g.createRadialGradient(x,y,0,x,y,r);
+      gr.addColorStop(0,'rgba(176,196,202,.34)'); gr.addColorStop(.5,'rgba(176,196,202,.14)'); gr.addColorStop(1,'rgba(176,196,202,0)');
+      g.fillStyle=gr; g.fillRect(x-r,y-r,r*2,r*2);
+    }
+    return s;
+  }
+  function build(){
+    var art=[bake(),bake(),bake(),bake()];
+    var n=Math.round(Math.max(4,Math.min(9,W*H/130000)));
+    banks=[];
+    for(var i=0;i<n;i++){
+      var bw=W*(.7+Math.random()*.9), dir=Math.random()<.78?1:-1;
+      banks.push({img:art[i%art.length], w:bw, h:bw*.36,
+        x:Math.random()*(W+bw)-bw, y:(i+Math.random())/n*(H+60)-60,
+        v:dir*(3+Math.random()*6),                 // px per second: a bank takes a minute or two to cross
+        bob:6+Math.random()*14, ph:Math.random()*6.28, fr:.05+Math.random()*.08,
+        a:.5+Math.random()*.5, br:.04+Math.random()*.05, bp:Math.random()*6.28});
+    }
+  }
+  function size(){
+    var dpr=Math.min(window.devicePixelRatio||1,2);
+    W=vp.clientWidth; H=vp.clientHeight;
+    c.width=Math.round(W*dpr); c.height=Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    build();
+  }
+  function draw(dt){
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<banks.length;i++){
+      var b=banks[i];
+      b.x+=b.v*dt; b.ph+=b.fr*dt; b.bp+=b.br*dt;
+      if(b.v>0 && b.x>W) b.x=-b.w; else if(b.v<0 && b.x<-b.w) b.x=W;
+      // each bank thickens and thins as it goes, so the mist breathes rather than slides
+      ctx.globalAlpha=b.a*(.55+.45*Math.sin(b.bp))*.8;
+      ctx.drawImage(b.img,b.x,b.y+Math.sin(b.ph)*b.bob,b.w,b.h);
+    }
+    ctx.globalAlpha=1;
+  }
+  function frame(t){
+    var dt=last?Math.min(.05,(t-last)/1000):0; last=t; clock+=dt;
+    draw(dt);
+    if(!calm && !document.hidden) requestAnimationFrame(frame);
+  }
+  size();
+  window.addEventListener('resize',function(){ size(); if(calm) draw(0); });
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden && !calm){ last=0; requestAnimationFrame(frame); }
+  });
+  if(calm) draw(0); else requestAnimationFrame(frame);
 })();
 
 /* --- clouds over the map --- */
@@ -1102,24 +1259,17 @@ var clouds=(function(){
 
 /* --- sessions --- */
 /* The reader lands in the latest session, the state of the world as it stands, and can walk
-   back through the campaign. Only the points move; the map, the regions and every word
-   written about a place are the same in all of them. */
+   back through the campaign. The map is the same in all of them; what changes is the recap
+   and which texts, pictures and characters have come up yet. */
 function drawSessions(){
-  var bar=document.getElementById('sess');
   if(DATA.sessions.length<2) return;      // one session is no timeline
-  bar.hidden=false;
   function paint(){
-    refreshRecap();
     document.getElementById('sessName').textContent=DATA.sessions[SESSION].label;
     document.getElementById('sessCount').textContent=(SESSION+1)+' / '+DATA.sessions.length;
     document.getElementById('sessPrev').disabled=SESSION===0;
     document.getElementById('sessNext').disabled=SESSION===DATA.sessions.length-1;
-    DATA.pois.forEach(function(p){
-      var el=cv.querySelector('.pin:not(.big)[data-id="'+p.id+'"]');
-      if(!el) return;
-      var at=posAt(p, SESSION);
-      el.style.left=(at.x*100)+'%'; el.style.top=(at.y*100)+'%';
-    });
+    refreshRecap();
+    if(mode==='place' && cur) renderPlace();
   }
   function go(i){
     SESSION=Math.max(0,Math.min(DATA.sessions.length-1,i));
