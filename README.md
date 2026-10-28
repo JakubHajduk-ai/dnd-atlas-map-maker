@@ -86,6 +86,15 @@ no room above it — a wide map on a wide monitor — the atlas opens pulled bac
 title is the first thing a reader sees. On a screen with no room even then (a phone held
 sideways), it is left out. The editor itself does not draw it; the preview does.
 
+### Boundary lines
+
+**Map settings → Boundary lines** draws lines over the map: a border, a road, a river. Press
+**Add boundary line** (or **Draw** next to an existing one) and click along the line; Enter, or a
+click on the last point, finishes it, Backspace takes the last point back, Esc cancels. Each line
+has a color (white by default) and a style: solid, dashed or dotted. A line with a name is listed
+in the legend of the finished map with a sample of its own style; leave the name empty to keep a
+line out of the legend. Lines lie over the regions and under the places, and never take a click.
+
 ### The overview
 
 Pulled all the way back, the finished map shows drifting clouds and the title artwork, and the
@@ -179,6 +188,11 @@ One project is one JSON object:
   "intro": "Optional intro text.",
   "map": { "src": "data:image/jpeg;base64,…", "w": 2600, "h": 1700 },
   "frame": true,                  // engrave a border onto the sheet; absent counts as true
+  "boundaries": [{                // optional lines drawn over the map
+    "id": "k1", "label": "The old border",   // empty label: not in the legend
+    "color": "#ffffff", "style": "dashed",   // style: "solid" | "dashed" | "dotted"
+    "points": [[0.2,0.3],[0.35,0.4],[0.5,0.38]]   // relative coordinates, at least two
+  }],
   "background": "magic",          // "magic" (default), "snow" or "mist"
   "titleImage": "data:image/webp;base64,…", // optional title artwork above the map
   "sessions": [                   // optional timeline, in chronological order

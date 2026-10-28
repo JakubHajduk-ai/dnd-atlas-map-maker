@@ -132,6 +132,12 @@ button{cursor:pointer}
 .areas polygon:hover{fill-opacity:.17}
 .areas polygon[data-sel="1"]{fill-opacity:.2;stroke-width:2.4}
 .areas .draft{fill-opacity:.07;stroke-dasharray:6 5;pointer-events:none}
+/* boundary lines — over the areas, under the points, never take a click */
+.boundaries{position:absolute;top:0;left:0;overflow:visible;pointer-events:none}
+.boundaries polyline{fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round;stroke-linejoin:round}
+.boundaries .halo{stroke:rgba(0,0,0,.4);stroke-width:4.8px}
+.boundaries .line{stroke-width:2.3px}
+.boundaries .vtx{fill:var(--ac);stroke:rgba(0,0,0,.55);stroke-width:1.4;vector-effect:non-scaling-stroke;pointer-events:none}
 .areas .vtx{fill:var(--ac);stroke:rgba(0,0,0,.55);stroke-width:1.4;vector-effect:non-scaling-stroke;pointer-events:none}
 
 .reg-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}

@@ -29,7 +29,7 @@ function iconSvg(t){
 var S = null;
 var sel = null;          // id of the selected point
 var selReg = null;       // id of the selected region (a point or a region is selected, never both)
-var mode = null;         // null | "poi" | "anchor" | "area" — what a click is placing right now
+var mode = null;         // null | "poi" | "anchor" | "area" | "line" — what a click is placing right now
 var modeReg = null;      // id of the region whose area or big pin is being drawn
 var draft = null;        // polygon being drawn [[x,y],…]
 var tab = "area";        // inspector tab
@@ -46,6 +46,7 @@ function blank(){
     intro:"",
     map:null,                       // {src,w,h}
     frame:true,                     // engrave a border onto the sheet (off for maps that have one)
+    boundaries:[],                  // lines drawn over the map: [{id,label,color,style,points}]
     background:"magic",             // behind the map in the finished site: "magic", "snow" or "mist"
     titleImage:null,                // artwork shown above the map when the view is pulled back
     // Sessions are the atlas read at different moments of the campaign. The map is the same in
@@ -97,6 +98,15 @@ function newRegion(label, color){
     summary:"", description:"", image:null, characters:[]
   };
 }
+/* A boundary line is an open line drawn over the map, for a border, a road or a river. It has a
+   color and a style (solid, dashed or dotted), and a name that puts it in the legend. */
+function newBoundary(label){ return {id:uid(), label:label, color:"#ffffff", style:"dashed", points:[]}; }
+function boundaryById(id){
+  for(var i=0;i<S.boundaries.length;i++) if(S.boundaries[i].id===id) return S.boundaries[i];
+  return null;
+}
+function lineDash(style){ return style==="dotted" ? "0.1 6" : (style==="dashed" ? "10 7" : ""); }
+function lineColor(c){ return /^#[0-9a-f]{6}$/i.test(c||"") ? c : "#ffffff"; }
 function newPoi(x,y){
   return {
     id:uid(), name:"New point", type:"city", factionId:S.factions[0] ? S.factions[0].id : null,
@@ -296,6 +306,11 @@ function normFromEvent(e){
     y: Math.max(0, Math.min(1, (e.clientY - r.top)/r.height))
   };
 }
+function nearLastVertex(e){
+  if(!draft || draft.length<2) return false;
+  var r = cv.getBoundingClientRect(), l = draft[draft.length-1];
+  return Math.abs(e.clientX-(r.left+l[0]*r.width)) + Math.abs(e.clientY-(r.top+l[1]*r.height)) < 14;
+}
 function nearFirstVertex(e){
   if(!draft || draft.length<3) return false;
   var r = cv.getBoundingClientRect();
@@ -323,6 +338,13 @@ vp.addEventListener("click", function(e){
     renderAll(); persist();
     return;
   }
+  if(mode==="line"){
+    if(nearLastVertex(e)){ finishLine(); return; }
+    var nl = normFromEvent(e);
+    draft.push([nl.x, nl.y]);
+    refreshAreas();
+    return;
+  }
   if(mode==="area"){
     if(nearFirstVertex(e)){ closeDraft(); return; }
     var nv = normFromEvent(e);
@@ -342,8 +364,8 @@ document.addEventListener("keydown", function(e){
     return;
   }
   if(!mode || typing) return;
-  if(mode==="area" && e.key==="Enter"){ e.preventDefault(); closeDraft(); }
-  if(mode==="area" && e.key==="Backspace"){
+  if(mode==="line" && e.key==="Enter"){ e.preventDefault(); finishLine(); }
+  if((mode==="area" || mode==="line") && e.key==="Backspace"){
     e.preventDefault();
     if(draft && draft.length){ draft.pop(); refreshAreas(); }
   }
@@ -352,17 +374,26 @@ document.addEventListener("keydown", function(e){
 function setMode(m, regId){
   mode = m || null;
   modeReg = mode ? (regId||null) : null;
-  draft = (mode==="area") ? (draft||[]) : null;
+  draft = (mode==="area" || mode==="line") ? (draft||[]) : null;
   vp.classList.toggle("adding", !!mode);
   var hint = document.getElementById("stageHint");
   hint.classList.toggle("hidden", !mode);
   hint.textContent =
     mode==="poi"    ? "Click the map to place the point. Esc cancels." :
     mode==="anchor" ? "Click the map to place the region's big pin. Esc cancels." :
+    mode==="line"   ? "Click along the line. Enter, or a click on the last point, finishes it. Backspace takes the last point back, Esc cancels." :
     mode==="area"   ? "Click the vertices of the area. Enter or a click on the first vertex closes it, Backspace takes the last one back, Esc cancels." : "";
   document.getElementById("btnAddPoi").textContent = mode==="poi" ? "Cancel placing" : "Add point";
 }
 function startArea(regId){ draft=[]; setMode("area", regId); renderAll(); }
+function startLine(id){ draft=[]; setMode("line", id); renderAll(); }
+function finishLine(){
+  var b = boundaryById(modeReg);
+  if(b && draft && draft.length>1) b.points = draft.slice();
+  else if(draft && draft.length) toast("A line needs at least two points.");
+  setMode(null);
+  renderAll(); persist();
+}
 function closeDraft(){
   var f = regById(modeReg);
   if(f && draft && draft.length>2) f.area = draft.slice();
@@ -384,6 +415,7 @@ function renderMap(){
   cv.appendChild(img);
 
   renderAreas();
+  renderBoundaries();
   if(S.frame) cv.insertAdjacentHTML("beforeend", frameHtml(S.map.w, S.map.h));
 
   S.factions.forEach(function(f){
@@ -451,7 +483,8 @@ function ptsOf(list){
 function renderAreas(){
   var NS = "http://www.w3.org/2000/svg";
   var drawn = S.factions.filter(hasArea);
-  if(!drawn.length && !draft) return;
+  var dft = mode==="area" ? draft : null;      // a line being drawn is painted with the lines
+  if(!drawn.length && !dft) return;
   var svg = document.createElementNS(NS,"svg");
   svg.setAttribute("class","areas");
   svg.setAttribute("width", S.map.w);
@@ -468,15 +501,15 @@ function renderAreas(){
     svg.appendChild(pg);
   });
 
-  if(draft && draft.length){
+  if(dft && dft.length){
     var dr = regById(modeReg);
     var color = dr ? dr.color : "#dcae6a";
     var pl = document.createElementNS(NS,"polyline");
     pl.setAttribute("class","draft");
-    pl.setAttribute("points", ptsOf(draft));
+    pl.setAttribute("points", ptsOf(dft));
     pl.style.setProperty("--ac", color);
     svg.appendChild(pl);
-    draft.forEach(function(pt){
+    dft.forEach(function(pt){
       var c = document.createElementNS(NS,"circle");
       c.setAttribute("class","vtx");
       c.setAttribute("cx", (pt[0]*S.map.w).toFixed(1));
@@ -490,12 +523,54 @@ function renderAreas(){
   var firstPin = cv.querySelector(".pin");
   if(firstPin) cv.insertBefore(svg, firstPin); else cv.appendChild(svg);
 }
+/* Boundary lines sit over the areas and under the points, and never take a click. A halo of
+   dark under the colored line keeps a white line readable on pale parts of the map. */
+function renderBoundaries(){
+  var NS = "http://www.w3.org/2000/svg";
+  var drawn = S.boundaries.filter(function(b){ return b.points.length>1 && !(mode==="line" && modeReg===b.id); });
+  var dft = mode==="line" ? draft : null;
+  if(!drawn.length && !(dft && dft.length)) return;
+  var svg = document.createElementNS(NS,"svg");
+  svg.setAttribute("class","boundaries");
+  svg.setAttribute("width", S.map.w);
+  svg.setAttribute("height", S.map.h);
+  svg.setAttribute("viewBox", "0 0 "+S.map.w+" "+S.map.h);
+  function line(pts, color, style){
+    var dash = lineDash(style), s = ptsOf(pts);
+    ["halo","line"].forEach(function(k){
+      var pl = document.createElementNS(NS,"polyline");
+      pl.setAttribute("class", k);
+      pl.setAttribute("points", s);
+      if(dash) pl.setAttribute("stroke-dasharray", dash);
+      if(k==="line") pl.setAttribute("stroke", lineColor(color));
+      svg.appendChild(pl);
+    });
+  }
+  drawn.forEach(function(b){ line(b.points, b.color, b.style); });
+  if(dft && dft.length){
+    var db = boundaryById(modeReg);
+    if(dft.length>1) line(dft, db ? db.color : "#ffffff", db ? db.style : "dashed");
+    dft.forEach(function(pt){
+      var c = document.createElementNS(NS,"circle");
+      c.setAttribute("class","vtx");
+      c.setAttribute("cx", (pt[0]*S.map.w).toFixed(1));
+      c.setAttribute("cy", (pt[1]*S.map.h).toFixed(1));
+      c.setAttribute("r", 5/view.z);
+      c.style.setProperty("--ac", db ? lineColor(db.color) : "#ffffff");
+      svg.appendChild(c);
+    });
+  }
+  var firstPin = cv.querySelector(".pin");
+  if(firstPin) cv.insertBefore(svg, firstPin); else cv.appendChild(svg);
+}
 /* While drawing it is enough to repaint the areas layer — renderMap() would rebuild
    the <img> holding the whole map as a data URI every time and the image would flicker. */
 function refreshAreas(){
   var old = cv.querySelector(".areas");
   if(old) old.remove();
-  if(S.map) renderAreas();
+  var oldB = cv.querySelector(".boundaries");
+  if(oldB) oldB.remove();
+  if(S.map){ renderAreas(); renderBoundaries(); }
 }
 function attachDrag(el, move, pick){
   var drag=null;
@@ -948,6 +1023,46 @@ document.getElementById("btnSettings").onclick = function(){
     paintFacs();
     sheet.appendChild(list);
 
+    sheet.appendChild(el("h3",null,"Boundary lines"));
+    sheet.appendChild(el("p","sub","Lines drawn over the map, for a border, a road or a river. Pick a color and a solid, dashed or dotted line. A line with a name is listed in the legend of the finished map; leave the name empty to keep it out of the legend."));
+    var blist = el("div");
+    function paintBounds(){
+      blist.innerHTML="";
+      S.boundaries.forEach(function(b, i){
+        var row = el("div","reg-row");
+        var col = document.createElement("input"); col.type="color"; col.value=lineColor(b.color);
+        col.oninput=function(){ b.color=col.value; refreshAreas(); persist(); };
+        var nm = input(b.label, function(v){ b.label=v; persist(); }, "Name in the legend");
+        var st = document.createElement("select"); st.className="inp"; st.style.flex="0 0 auto"; st.style.width="104px";
+        [["solid","Solid"],["dashed","Dashed"],["dotted","Dotted"]].forEach(function(o){
+          var op = document.createElement("option"); op.value=o[0]; op.textContent=o[1]; st.appendChild(op);
+        });
+        st.value = b.style;
+        st.onchange=function(){ b.style=st.value; refreshAreas(); persist(); };
+        var tag = el("span","tag", b.points.length>1 ? b.points.length+" points" : "not drawn yet");
+        var draw = el("button","mini", b.points.length>1 ? "Redraw" : "Draw");
+        draw.onclick=function(){
+          if(!S.map) return toast("Upload a map image first.");
+          close(); startLine(b.id);
+        };
+        var rm = el("button","mini del","×");
+        rm.onclick=function(){ S.boundaries.splice(i,1); paintBounds(); refreshAreas(); persist(); };
+        row.appendChild(col); row.appendChild(nm); row.appendChild(st); row.appendChild(tag);
+        row.appendChild(draw); row.appendChild(rm);
+        blist.appendChild(row);
+      });
+      var addb = el("button","addbtn","Add boundary line");
+      addb.onclick=function(){
+        if(!S.map) return toast("Upload a map image first.");
+        var b = newBoundary("Boundary");
+        S.boundaries.push(b); persist();
+        close(); startLine(b.id);
+      };
+      blist.appendChild(addb);
+    }
+    paintBounds();
+    sheet.appendChild(blist);
+
     sheet.appendChild(el("h3",null,"Base map"));
     var mapInfo = el("p","sub", S.map ? ("Currently "+S.map.w+"×"+S.map.h+" px, "+fmtSize(bytesOf(S.map.src))+".") : "No map yet.");
     sheet.appendChild(mapInfo);
@@ -1064,6 +1179,12 @@ function normalize(d){
   b.intro = d.intro || "";
   b.map = d.map || null;
   b.frame = d.frame !== false;      // projects from before the frame existed get one
+  b.boundaries = (d.boundaries||[]).map(function(x){
+    var pts = (x.points||[]).filter(function(q){ return q && isFinite(q[0]) && isFinite(q[1]); })
+      .map(function(q){ return [Math.max(0,Math.min(1,+q[0])), Math.max(0,Math.min(1,+q[1]))]; });
+    return {id:x.id||uid(), label:x.label==null?"":String(x.label), color:lineColor(x.color),
+      style:(x.style==="solid"||x.style==="dotted")?x.style:"dashed", points:pts.length>1?pts:[]};
+  });
   b.background = (d.background==="snow" || d.background==="mist") ? d.background : "magic";
   b.titleImage = d.titleImage || null;
   // older projects have factions without territory — fill in empty fields, not invented ones
@@ -1243,6 +1364,7 @@ var TOUR_STEPS = [
     text:"Everything else lives in Map settings.",
     items:["Regions: draw territory and place a big name across the land.",
            "Sessions: write a recap for each one, and hold a place's text, pictures or characters back until the session where they come up.",
+           "Boundary lines: draw solid, dashed or dotted lines over the map for borders, roads or rivers. Named lines go in the legend.",
            "Border: engrave a frame onto map images that have none."] },
   { title:"4. Preview, save and share",
     text:"Preview shows what visitors will see. Export site downloads the finished map as one index.html.",

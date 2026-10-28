@@ -45,6 +45,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .legend{display:flex;gap:13px;flex-wrap:wrap;align-items:center}
 .legend span{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .legend i{width:9px;height:9px;border-radius:50%;display:block}
+.legend svg{width:26px;height:8px;flex:0 0 auto;display:block}
 .ghost{background:transparent;border:1px solid var(--line-2);border-radius:3px;padding:6px 12px;color:var(--linen)}
 .ghost:hover{background:rgba(180,135,74,.14)}
 
@@ -126,6 +127,12 @@ button{font:inherit;color:inherit;cursor:pointer}
   user-select:none;-webkit-user-drag:none;opacity:0;transition:opacity .35s ease;
   filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
 
+/* boundary lines: over the areas, under the places, and never in the way of a click. The dark
+   halo keeps a pale line readable on a pale map. */
+.boundaries{position:absolute;top:0;left:0;overflow:visible;pointer-events:none}
+.boundaries polyline{fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round;stroke-linejoin:round}
+.boundaries .halo{stroke:rgba(0,0,0,.4);stroke-width:4.8px}
+.boundaries .line{stroke-width:2.3px}
 /* region areas: invisible, they exist only so the map knows which region you are over */
 .areas{position:absolute;top:0;left:0;overflow:visible}
 .areas polygon{fill:transparent;stroke:none;pointer-events:fill}
@@ -392,6 +399,11 @@ function published(p){
     title:p.title, subtitle:p.subtitle, intro:p.intro, map:p.map,
     sessions:p.sessions||[],
     frame:p.frame!==false,
+    boundaries:(p.boundaries||[]).filter(function(b){ return b && b.points && b.points.length>1; }).map(function(b){
+      return {label:b.label==null?'':String(b.label), color:lineCol(b.color),
+        style:(b.style==='solid'||b.style==='dotted')?b.style:'dashed',
+        points:b.points.filter(function(q){ return q && isFinite(q[0]) && isFinite(q[1]); })};
+    }),
     background:(p.background==='snow'||p.background==='mist')?p.background:'magic',
     titleImage:p.titleImage||null,
     factions:(p.factions||[]).map(function(f){
@@ -405,6 +417,8 @@ function published(p){
   };
 }
 
+function lineCol(c){ return /^#[0-9a-f]{6}$/i.test(c||'') ? c : '#ffffff'; }
+function lineDash(style){ return style==='dotted' ? '0.1 6' : (style==='dashed' ? '10 7' : ''); }
 function ic(t){
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[t]||ICONS.place)+'<\/svg>';
 }
@@ -641,6 +655,28 @@ function drawAreas(){
   });
   cv.appendChild(svg);
 }
+function drawBoundaries(){
+  if(!DATA.boundaries.length) return;
+  var NS='http://www.w3.org/2000/svg';
+  var svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('class','boundaries'); svg.setAttribute('aria-hidden','true');
+  svg.setAttribute('width',DATA.map.w); svg.setAttribute('height',DATA.map.h);
+  svg.setAttribute('viewBox','0 0 '+DATA.map.w+' '+DATA.map.h);
+  DATA.boundaries.forEach(function(b){
+    var pts=b.points.map(function(pt){
+      return (pt[0]*DATA.map.w).toFixed(1)+','+(pt[1]*DATA.map.h).toFixed(1);
+    }).join(' ');
+    var dash=lineDash(b.style);
+    ['halo','line'].forEach(function(k){
+      var pl=document.createElementNS(NS,'polyline');
+      pl.setAttribute('class',k); pl.setAttribute('points',pts);
+      if(dash) pl.setAttribute('stroke-dasharray',dash);
+      if(k==='line') pl.setAttribute('stroke',b.color);
+      svg.appendChild(pl);
+    });
+  });
+  cv.appendChild(svg);
+}
 function drawMap(){
   cv.innerHTML='';
   if(!DATA.map) return;
@@ -648,6 +684,7 @@ function drawMap(){
   var im=new Image(); im.className='base'; im.src=DATA.map.src; im.alt=DATA.title;
   cv.appendChild(im);
   drawAreas();
+  drawBoundaries();
   if(DATA.frame) cv.insertAdjacentHTML('beforeend', frameHtml(DATA.map.w, DATA.map.h));
   if(DATA.titleImage){
     var art=new Image(); art.className='title-art'; art.src=DATA.titleImage; art.alt=DATA.title;
@@ -931,6 +968,18 @@ if(!MOBILE.matches){ if(HAS_RECAP) showRecap(); else showIntro(); }
     var s=document.createElement('span');
     var i=document.createElement('i'); i.style.background=f.color;
     s.appendChild(i); s.appendChild(document.createTextNode(f.label));
+    lg.appendChild(s);
+  });
+  // a named boundary line is listed with a sample of its own line
+  DATA.boundaries.forEach(function(b){
+    if(!b.label) return;
+    var NS='http://www.w3.org/2000/svg', s=document.createElement('span');
+    var sv=document.createElementNS(NS,'svg'); sv.setAttribute('viewBox','0 0 26 8'); sv.setAttribute('aria-hidden','true');
+    var ln=document.createElementNS(NS,'line');
+    ln.setAttribute('x1','2'); ln.setAttribute('y1','4'); ln.setAttribute('x2','24'); ln.setAttribute('y2','4');
+    ln.setAttribute('stroke',b.color); ln.setAttribute('stroke-width','2.3'); ln.setAttribute('stroke-linecap','round');
+    var dash=lineDash(b.style); if(dash) ln.setAttribute('stroke-dasharray',dash);
+    sv.appendChild(ln); s.appendChild(sv); s.appendChild(document.createTextNode(b.label));
     lg.appendChild(s);
   });
   if(DATA.intro){
