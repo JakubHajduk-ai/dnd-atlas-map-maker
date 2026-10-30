@@ -46,7 +46,7 @@ function blank(){
     intro:"",
     map:null,                       // {src,w,h}
     frame:true,                     // engrave a border onto the sheet (off for maps that have one)
-    boundaries:[],                  // lines drawn over the map: [{id,label,color,style,points}]
+    boundaries:[],                  // lines drawn over the map: [{id,label,color,style,paths:[[[x,y],…],…]}]
     background:"magic",             // behind the map in the finished site: "magic", "snow" or "mist"
     titleImage:null,                // artwork shown above the map when the view is pulled back
     // Sessions are the atlas read at different moments of the campaign. The map is the same in
@@ -98,9 +98,14 @@ function newRegion(label, color){
     summary:"", description:"", image:null, characters:[]
   };
 }
-/* A boundary line is an open line drawn over the map, for a border, a road or a river. It has a
-   color and a style (solid, dashed or dotted), and a name that puts it in the legend. */
-function newBoundary(label){ return {id:uid(), label:label, color:"#ffffff", style:"dashed", points:[]}; }
+/* A boundary is one thing on the map, a border, a road or a river, and it may be drawn as several
+   separate lines that share a color, a style and one entry in the legend. */
+function newBoundary(label){ return {id:uid(), label:label, color:"#ffffff", style:"dashed", paths:[]}; }
+function cleanPath(path){
+  var pts = (path||[]).filter(function(q){ return q && isFinite(q[0]) && isFinite(q[1]); })
+    .map(function(q){ return [Math.max(0,Math.min(1,+q[0])), Math.max(0,Math.min(1,+q[1]))]; });
+  return pts.length>1 ? pts : null;
+}
 function boundaryById(id){
   for(var i=0;i<S.boundaries.length;i++) if(S.boundaries[i].id===id) return S.boundaries[i];
   return null;
@@ -376,6 +381,7 @@ function setMode(m, regId){
   modeReg = mode ? (regId||null) : null;
   draft = (mode==="area" || mode==="line") ? (draft||[]) : null;
   vp.classList.toggle("adding", !!mode);
+  vp.classList.toggle("drawing-line", mode==="line");
   var hint = document.getElementById("stageHint");
   hint.classList.toggle("hidden", !mode);
   hint.textContent =
@@ -389,7 +395,7 @@ function startArea(regId){ draft=[]; setMode("area", regId); renderAll(); }
 function startLine(id){ draft=[]; setMode("line", id); renderAll(); }
 function finishLine(){
   var b = boundaryById(modeReg);
-  if(b && draft && draft.length>1) b.points = draft.slice();
+  if(b && draft && draft.length>1) b.paths.push(draft.slice());
   else if(draft && draft.length) toast("A line needs at least two points.");
   setMode(null);
   renderAll(); persist();
@@ -527,7 +533,7 @@ function renderAreas(){
    dark under the colored line keeps a white line readable on pale parts of the map. */
 function renderBoundaries(){
   var NS = "http://www.w3.org/2000/svg";
-  var drawn = S.boundaries.filter(function(b){ return b.points.length>1 && !(mode==="line" && modeReg===b.id); });
+  var drawn = S.boundaries.filter(function(b){ return b.paths.length>0; });
   var dft = mode==="line" ? draft : null;
   if(!drawn.length && !(dft && dft.length)) return;
   var svg = document.createElementNS(NS,"svg");
@@ -546,7 +552,7 @@ function renderBoundaries(){
       svg.appendChild(pl);
     });
   }
-  drawn.forEach(function(b){ line(b.points, b.color, b.style); });
+  drawn.forEach(function(b){ b.paths.forEach(function(pts){ line(pts, b.color, b.style); }); });
   if(dft && dft.length){
     var db = boundaryById(modeReg);
     if(dft.length>1) line(dft, db ? db.color : "#ffffff", db ? db.style : "dashed");
@@ -1024,7 +1030,7 @@ document.getElementById("btnSettings").onclick = function(){
     sheet.appendChild(list);
 
     sheet.appendChild(el("h3",null,"Boundary lines"));
-    sheet.appendChild(el("p","sub","Lines drawn over the map, for a border, a road or a river. Pick a color and a solid, dashed or dotted line. A line with a name is listed in the legend of the finished map; leave the name empty to keep it out of the legend."));
+    sheet.appendChild(el("p","sub","Lines drawn over the map, for a border, a road or a river. Pick a color and a solid, dashed or dotted line. One boundary can be several separate lines: press Add line again. A named boundary is listed once in the legend of the finished map; leave the name empty to keep it out. Regions do not react while you draw."));
     var blist = el("div");
     function paintBounds(){
       blist.innerHTML="";
@@ -1039,16 +1045,19 @@ document.getElementById("btnSettings").onclick = function(){
         });
         st.value = b.style;
         st.onchange=function(){ b.style=st.value; refreshAreas(); persist(); };
-        var tag = el("span","tag", b.points.length>1 ? b.points.length+" points" : "not drawn yet");
-        var draw = el("button","mini", b.points.length>1 ? "Redraw" : "Draw");
+        var n = b.paths.length;
+        var tag = el("span","tag", n ? n+(n===1?" line":" lines") : "not drawn yet");
+        var draw = el("button","mini", n ? "Add line" : "Draw");
         draw.onclick=function(){
           if(!S.map) return toast("Upload a map image first.");
           close(); startLine(b.id);
         };
+        var clr = el("button","mini","Clear");
+        clr.onclick=function(){ b.paths=[]; paintBounds(); refreshAreas(); persist(); };
         var rm = el("button","mini del","×");
         rm.onclick=function(){ S.boundaries.splice(i,1); paintBounds(); refreshAreas(); persist(); };
         row.appendChild(col); row.appendChild(nm); row.appendChild(st); row.appendChild(tag);
-        row.appendChild(draw); row.appendChild(rm);
+        row.appendChild(draw); if(n) row.appendChild(clr); row.appendChild(rm);
         blist.appendChild(row);
       });
       var addb = el("button","addbtn","Add boundary line");
@@ -1180,10 +1189,11 @@ function normalize(d){
   b.map = d.map || null;
   b.frame = d.frame !== false;      // projects from before the frame existed get one
   b.boundaries = (d.boundaries||[]).map(function(x){
-    var pts = (x.points||[]).filter(function(q){ return q && isFinite(q[0]) && isFinite(q[1]); })
-      .map(function(q){ return [Math.max(0,Math.min(1,+q[0])), Math.max(0,Math.min(1,+q[1]))]; });
+    // an earlier version kept one line in `points`; it is now the first of the `paths`
+    var raw = x.paths || (x.points ? [x.points] : []);
     return {id:x.id||uid(), label:x.label==null?"":String(x.label), color:lineColor(x.color),
-      style:(x.style==="solid"||x.style==="dotted")?x.style:"dashed", points:pts.length>1?pts:[]};
+      style:(x.style==="solid"||x.style==="dotted")?x.style:"dashed",
+      paths:raw.map(cleanPath).filter(Boolean)};
   });
   b.background = (d.background==="snow" || d.background==="mist") ? d.background : "magic";
   b.titleImage = d.titleImage || null;

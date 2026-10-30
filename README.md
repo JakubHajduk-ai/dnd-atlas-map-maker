@@ -89,11 +89,15 @@ sideways), it is left out. The editor itself does not draw it; the preview does.
 ### Boundary lines
 
 **Map settings → Boundary lines** draws lines over the map: a border, a road, a river. Press
-**Add boundary line** (or **Draw** next to an existing one) and click along the line; Enter, or a
-click on the last point, finishes it, Backspace takes the last point back, Esc cancels. Each line
-has a color (white by default) and a style: solid, dashed or dotted. A line with a name is listed
-in the legend of the finished map with a sample of its own style; leave the name empty to keep a
-line out of the legend. Lines lie over the regions and under the places, and never take a click.
+**Add boundary line** (or **Add line** next to an existing one) and click along the line; Enter,
+or a click on the last point, finishes it, Backspace takes the last point back, Esc cancels. One
+boundary can be drawn as several separate lines, for a border that forks or breaks off: press
+**Add line** again, and **Clear** starts the boundary over. Each boundary has a color (white by
+default) and a style: solid, dashed or dotted. A boundary with a name is listed once in the legend
+of the finished map with a sample of its own style, however many lines it is drawn as, and two
+boundaries with the same name are one entry; leave the name empty to keep it out of the legend.
+Regions do not react to the pointer while a line is being drawn. In the finished map the lines
+lie over the regions and under the places, and never take a click.
 
 ### The overview
 
@@ -191,7 +195,7 @@ One project is one JSON object:
   "boundaries": [{                // optional lines drawn over the map
     "id": "k1", "label": "The old border",   // empty label: not in the legend
     "color": "#ffffff", "style": "dashed",   // style: "solid" | "dashed" | "dotted"
-    "points": [[0.2,0.3],[0.35,0.4],[0.5,0.38]]   // relative coordinates, at least two
+    "paths": [[[0.2,0.3],[0.35,0.4],[0.5,0.38]], [[0.5,0.38],[0.6,0.2]]]  // lines, each of at least two relative points
   }],
   "background": "magic",          // "magic" (default), "snow" or "mist"
   "titleImage": "data:image/webp;base64,…", // optional title artwork above the map
