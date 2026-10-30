@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 *.atlas.json
+
+# local instructions for Claude Code, kept out of the repository
+CLAUDE.md
